@@ -1,5 +1,10 @@
+# linuxParser.py
+# Linux evidence parser that converts raw Linux host output files into
+# normalized JSON structures for report generation.
+
 import os
 import json
+
 
 # 1.2.5_running_services.txt
 def parse_running_services(file_path):
@@ -18,7 +23,13 @@ def parse_running_services(file_path):
                 continue
             if line.startswith("UNIT"):
                 continue
-            if line.startswith("LOAD") or line.startswith("ACTIVE") or line.startswith("SUB") or ("loaded units listed. Pass --all" in line) or ("To show all installed unit files" in line):
+            if (
+                line.startswith("LOAD")
+                or line.startswith("ACTIVE")
+                or line.startswith("SUB")
+                or ("loaded units listed. Pass --all" in line)
+                or ("To show all installed unit files" in line)
+            ):
                 continue
             if "loaded units listed" in line:
                 break
@@ -35,15 +46,18 @@ def parse_running_services(file_path):
 
             description = " ".join(parts[4:])
 
-            services.append({
-                "service": service_name,
-                "load": load,
-                "active": active,
-                "status": sub,  # (running, dead, etc.)
-                "description": description
-            })
+            services.append(
+                {
+                    "service": service_name,
+                    "load": load,
+                    "active": active,
+                    "status": sub,  # (running, dead, etc.)
+                    "description": description,
+                }
+            )
 
     return {"running_services": services}
+
 
 # uname.txt
 def parse_uname(file_path):
@@ -64,14 +78,8 @@ def parse_uname(file_path):
     host = parts[1] if len(parts) > 1 else ""
     kernel = parts[2] if len(parts) > 2 else ""
 
-    return {
-        "uname": {
-            "raw": uname_line,
-            "os": os_name,
-            "host": host,
-            "kernel": kernel
-        }
-    }
+    return {"uname": {"raw": uname_line, "os": os_name, "host": host, "kernel": kernel}}
+
 
 # 8.3_sshd_config.txt
 def parse_sshd_config(file_path):
@@ -115,6 +123,7 @@ def parse_sshd_config(file_path):
 
     return {"sshd_config": config}
 
+
 # 6.3.3_update_history.txt
 def parse_update_history(file_path):
     # File not found requirement
@@ -155,17 +164,21 @@ def parse_update_history(file_path):
             action = parts[3]
             altered = parts[4]
 
-            updates.append({
-                "id": update_id,
-                "command": command,
-                "datetime": datetime_val,
-                "action": action,
-                "altered": altered
-            })
+            updates.append(
+                {
+                    "id": update_id,
+                    "command": command,
+                    "datetime": datetime_val,
+                    "action": action,
+                    "altered": altered,
+                }
+            )
 
     return {"update_history": updates}
 
+
 import csv
+
 
 # 6.3.3_package_manager.csv
 def parse_package_manager(file_path):
@@ -183,6 +196,7 @@ def parse_package_manager(file_path):
     # Fallback if file is empty
     return {"package_manager": "no valid data"}
 
+
 # summary.csv
 # this file is like completely broken sometimes so this took forever
 def parse_summary(file_path):
@@ -196,6 +210,7 @@ def parse_summary(file_path):
     if len(reader) < 3:
         return {"summary": "no valid data"}
 
+    # summary.csv parsing is brittle and may need a patch if the source columns shift
     headers = [h.strip() for h in reader[1]]
     values = [v.strip() for v in reader[2]]
 
@@ -247,12 +262,15 @@ def parse_summary(file_path):
             log_parts = tail
 
         # Everything between LogActive and TimesyncEnabled belongs to LogLevel
-        log_level = ",".join(part.strip() for part in log_parts if part is not None).strip(",")
+        log_level = ",".join(
+            part.strip() for part in log_parts if part is not None
+        ).strip(",")
 
     summary["LogLevel"] = log_level
     summary["TimesyncEnabled"] = timesync_enabled
 
     return {"summary": summary}
+
 
 # groups.txt
 def parse_groups(file_path):
@@ -287,16 +305,14 @@ def parse_groups(file_path):
             else:
                 members = []
 
-            groups.append({
-                "group": group_name,
-                "gid": gid,
-                "members": members
-            })
+            groups.append({"group": group_name, "gid": gid, "members": members})
 
     return {"groups": groups}
 
+
 # 10.3.3_logging.txt
 import os
+
 
 def parse_logging(file_path):
     # File not found requirement
@@ -327,7 +343,7 @@ def parse_logging(file_path):
 
                 try:
                     start = line.index("Target=") + len("Target=")
-                    target = line[start:].split()[0].replace('"', '').strip()
+                    target = line[start:].split()[0].replace('"', "").strip()
                     forwarding_targets.append(target)
                 except:
                     pass
@@ -342,9 +358,10 @@ def parse_logging(file_path):
         "logging": {
             "forwarding_configured": forwarding_configured,
             "forwarding_targets": forwarding_targets,
-            "script_result": script_result
+            "script_result": script_result,
         }
     }
+
 
 # 10.6.1_timesync.txt
 def parse_timesync(file_path):
@@ -367,7 +384,7 @@ def parse_timesync(file_path):
 
             if line.lower().startswith("system clock synchronized"):
                 value = line.split(":", 1)[1].strip().lower()
-                synchronized = (value == "yes")
+                synchronized = value == "yes"
 
             elif line.lower().startswith("ntp service"):
                 ntp_service = line.split(":", 1)[1].strip().lower()
@@ -383,8 +400,10 @@ def parse_timesync(file_path):
         }
     }
 
+
 # password.txt
 import os
+
 
 def parse_passwd(file_path):
     # File not found requirement
@@ -418,14 +437,17 @@ def parse_passwd(file_path):
 
             interactive = not any(x in shell for x in ["nologin", "false"])
 
-            users.append({
-                "username": username,
-                "uid": uid,
-                "shell": shell,
-                "interactive": interactive
-            })
+            users.append(
+                {
+                    "username": username,
+                    "uid": uid,
+                    "shell": shell,
+                    "interactive": interactive,
+                }
+            )
 
     return {"passwd": users}
+
 
 # 6.3.3_repolist.txt
 def parse_repolist(file_path):
@@ -445,12 +467,10 @@ def parse_repolist(file_path):
 
             parts = line.split(maxsplit=1)
             if len(parts) == 2:
-                repos.append({
-                    "repo_id": parts[0],
-                    "repo_name": parts[1]
-                })
+                repos.append({"repo_id": parts[0], "repo_name": parts[1]})
 
     return {"repolist": repos}
+
 
 # sudoers.txt
 def parse_sudoers(file_path):
@@ -465,17 +485,20 @@ def parse_sudoers(file_path):
         for line in f:
             line = line.strip()
 
-            if not line or line.startswith("#") or line.startswith("Defaults") or line.startswith("Host"):
+            if (
+                not line
+                or line.startswith("#")
+                or line.startswith("Defaults")
+                or line.startswith("Host")
+            ):
                 continue
 
             parts = line.split()
             if len(parts) >= 3:
-                privileges.append({
-                    "user": parts[0],
-                    "access": " ".join(parts[1:])
-                })
+                privileges.append({"user": parts[0], "access": " ".join(parts[1:])})
 
     return {"sudoers": privileges}
+
 
 # 8.2_enabledusers.txt
 def parse_enabled_users(file_path):
@@ -495,14 +518,17 @@ def parse_enabled_users(file_path):
             if len(parts) < 7:
                 continue
 
-            users.append({
-                "username": parts[0],
-                "uid": int(parts[2]) if parts[2].isdigit() else None,
-                "comment": parts[4],
-                "shell": parts[6]
-            })
+            users.append(
+                {
+                    "username": parts[0],
+                    "uid": int(parts[2]) if parts[2].isdigit() else None,
+                    "comment": parts[4],
+                    "shell": parts[6],
+                }
+            )
 
     return {"enabled_users": users}
+
 
 # 8.2_last20logins.txt
 def parse_last_logins(file_path):
@@ -522,12 +548,10 @@ def parse_last_logins(file_path):
 
             parts = line.split()
             if len(parts) >= 3:
-                logins.append({
-                    "user": parts[0],
-                    "source_ip": parts[2]
-                })
+                logins.append({"user": parts[0], "source_ip": parts[2]})
 
     return {"last_logins": logins}
+
 
 # 8.2.4_user_changes.txt
 def parse_user_changes(file_path):
@@ -548,6 +572,7 @@ def parse_user_changes(file_path):
             changes.append(line)
 
     return {"user_changes": changes}
+
 
 # 8.2.8_tmout.txt
 def parse_tmout(file_path):
@@ -570,6 +595,7 @@ def parse_tmout(file_path):
 
     return {"tmout": value}
 
+
 # 10.6.2_timesources.txt
 def parse_timesources(file_path):
     import os
@@ -583,7 +609,12 @@ def parse_timesources(file_path):
         for line in f:
             line = line.strip()
 
-            if not line or line.startswith("Host") or line.startswith("=") or "MS Name" in line:
+            if (
+                not line
+                or line.startswith("Host")
+                or line.startswith("=")
+                or "MS Name" in line
+            ):
                 continue
 
             parts = line.split()
@@ -591,6 +622,7 @@ def parse_timesources(file_path):
                 sources.append(parts[1])
 
     return {"timesources": sources}
+
 
 # shadow.txt
 def parse_shadow(file_path):
@@ -625,19 +657,22 @@ def parse_shadow(file_path):
             expire_date = parts[7] if len(parts) > 7 else ""
             reserved = parts[8] if len(parts) > 8 else ""
 
-            entries.append({
-                "username": username,
-                "password_field": password_field,
-                "last_change": last_change,
-                "min_days": min_days,
-                "max_days": max_days,
-                "warn_days": warn_days,
-                "inactive_days": inactive_days,
-                "expire_date": expire_date,
-                "reserved": reserved
-            })
+            entries.append(
+                {
+                    "username": username,
+                    "password_field": password_field,
+                    "last_change": last_change,
+                    "min_days": min_days,
+                    "max_days": max_days,
+                    "warn_days": warn_days,
+                    "inactive_days": inactive_days,
+                    "expire_date": expire_date,
+                    "reserved": reserved,
+                }
+            )
 
     return {"shadow": entries}
+
 
 # 8.3.9_pw-ages.csv
 def parse_pw_ages(file_path):
@@ -664,13 +699,12 @@ def parse_pw_ages(file_path):
                 except:
                     return val
 
-            entries.append({
-                "host": host,
-                "user": user,
-                "pw_max_age": normalize(pw_max_age)
-            })
+            entries.append(
+                {"host": host, "user": user, "pw_max_age": normalize(pw_max_age)}
+            )
 
     return {"pw_ages": entries}
+
 
 # 8.3.4_faillock.conf.txt
 def parse_login_attempts(file_path):
@@ -681,7 +715,7 @@ def parse_login_attempts(file_path):
         "deny": "Not found",
         "unlock_time": "Not found",
         "even_deny_root": False,
-        "root_unlock_time": "Not found"
+        "root_unlock_time": "Not found",
     }
 
     with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -694,7 +728,7 @@ def parse_login_attempts(file_path):
 
             if "=" in stripped:
                 key, _, value = stripped.partition("=")
-                key   = key.strip()
+                key = key.strip()
                 value = value.strip()
                 # print(key, value)
 
@@ -709,6 +743,7 @@ def parse_login_attempts(file_path):
                 result["even_deny_root"] = True
 
     return {"login_attempts": result}
+
 
 # 8.3_pwquality.txt
 def parse_pwquality(file_path):
@@ -731,7 +766,9 @@ def parse_pwquality(file_path):
 
     return {"pwquality": result}
 
-def build_linux_output(base_path="sampleLinux", output_path= "linux_output.json"):
+
+# this combines all the linux parse helpers into one json payload
+def build_linux_output(base_path="sampleLinux", output_path="linux_output.json"):
     output = {}
 
     output.update(parse_running_services(f"{base_path}/1.2.5_running_services.txt"))
@@ -760,6 +797,7 @@ def build_linux_output(base_path="sampleLinux", output_path= "linux_output.json"
         json.dump(output, f, indent=4)
 
     return output
+
 
 if __name__ == "__main__":
     result = build_linux_output()

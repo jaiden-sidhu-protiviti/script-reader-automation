@@ -1,7 +1,12 @@
+# windowsParser.py
+# Windows evidence parser that converts raw Windows host output files into
+# normalized JSON structures for report generation.
+
 import os
 import json
 import re
 import csv
+
 
 # 09_Services_Details.csv
 def parse_running_services(file_path):
@@ -25,7 +30,7 @@ def parse_running_services(file_path):
             service_name = row.get("Name") or row.get("ServiceName")
             display_name = row.get("Description", "")
             responding = row.get("Responding", "")
-                
+
             if responding.strip().lower() == "true":
                 status = "running"
                 active = "active"
@@ -33,15 +38,18 @@ def parse_running_services(file_path):
                 status = "stopped"
                 active = "inactive"
 
-            services.append({
-                "service": service_name,
-                "load": "loaded",
-                "active": active,
-                "status": status,
-                "description": display_name
-            })
+            services.append(
+                {
+                    "service": service_name,
+                    "load": "loaded",
+                    "active": active,
+                    "status": status,
+                    "description": display_name,
+                }
+            )
 
     return {"running_services": services}
+
 
 # 01_systeminfo.txt
 def parse_systeminfo(file_path):
@@ -72,7 +80,6 @@ def parse_systeminfo(file_path):
                 if current_key:
                     data[current_key] += " " + line.strip()
 
-
     # Normalize processor block
     if "Processor(s)" in data:
         match = re.search(r"(\d+)\s+Processor", data["Processor(s)"])
@@ -85,6 +92,7 @@ def parse_systeminfo(file_path):
             data[key] = data[key].replace(" MB", "").replace(",", "")
 
     return {"systeminfo": data}
+
 
 # 14_RDPSettings_Master.txt
 def parse_rdp_master(file_path):
@@ -114,6 +122,7 @@ def parse_rdp_master(file_path):
                 data[key] = value
 
     return {"rdp_master": data}
+
 
 # 14_RDPSettings_Domain.txt
 def parse_rdp_domain(file_path):
@@ -149,6 +158,7 @@ def parse_rdp_domain(file_path):
                     data[key] = value
 
     return {"rdp_domain": data}
+
 
 # 14_RDPSettings_Local.txt
 def parse_rdp_local(file_path):
@@ -186,6 +196,7 @@ def parse_rdp_local(file_path):
 
     return {"rdp_local": data}
 
+
 # 11_InstalledPatches.txt
 def parse_installed_patches(file_path):
     if not os.path.exists(file_path):
@@ -214,7 +225,7 @@ def parse_installed_patches(file_path):
                 stripped.find("HotFixID"),
                 stripped.find("InstalledOn"),
                 stripped.find("Description"),
-                stripped.find("InstalledBy")
+                stripped.find("InstalledBy"),
             ]
 
             continue
@@ -232,22 +243,25 @@ def parse_installed_patches(file_path):
             continue
 
         # Slice columns using start indices
-        hotfix_id = stripped[col_starts[0]:col_starts[1]].strip()
-        installed_on = stripped[col_starts[1]:col_starts[2]].strip()
-        description = stripped[col_starts[2]:col_starts[3]].strip()
-        installed_by = stripped[col_starts[3]:].strip()
+        hotfix_id = stripped[col_starts[0] : col_starts[1]].strip()
+        installed_on = stripped[col_starts[1] : col_starts[2]].strip()
+        description = stripped[col_starts[2] : col_starts[3]].strip()
+        installed_by = stripped[col_starts[3] :].strip()
 
         if not hotfix_id:
             continue
 
-        patches.append({
-            "patch_id": hotfix_id,
-            "installed_on": installed_on,
-            "description": description,
-            "installed_by": installed_by
-        })
+        patches.append(
+            {
+                "patch_id": hotfix_id,
+                "installed_on": installed_on,
+                "description": description,
+                "installed_by": installed_by,
+            }
+        )
 
     return {"installed_patches": patches}
+
 
 # 07_InstalledPrograms_wmioutput.txt
 def parse_installed_programs_wmi(file_path):
@@ -257,9 +271,7 @@ def parse_installed_programs_wmi(file_path):
     programs = []
 
     pattern = re.compile(
-        r'IdentifyingNumber="\{([^}]+)\}",'
-        r'Name="([^"]+)",'
-        r'Version="([^"]+)"'
+        r'IdentifyingNumber="\{([^}]+)\}",' r'Name="([^"]+)",' r'Version="([^"]+)"'
     )
 
     with open(file_path, "r", encoding="utf-8") as f:
@@ -281,13 +293,10 @@ def parse_installed_programs_wmi(file_path):
 
             guid, name, version = match.groups()
 
-            programs.append({
-                "id": guid,
-                "name": name,
-                "version": version
-            })
+            programs.append({"id": guid, "name": name, "version": version})
 
     return {"installed_programs": programs}
+
 
 # 05b_AuditPolicy.txt
 def parse_audit_policy(file_path):
@@ -331,6 +340,7 @@ def parse_audit_policy(file_path):
 
     return {"audit_policy": data}
 
+
 # 05_GroupPolicy.txt
 def parse_group_policy(file_path):
     if not os.path.exists(file_path):
@@ -341,7 +351,7 @@ def parse_group_policy(file_path):
         "audit_policy": {},
         "event_log_settings": {},
         "restricted_groups": {},
-        "log_settings": {}
+        "log_settings": {},
     }
 
     section = None
@@ -418,10 +428,15 @@ def parse_group_policy(file_path):
                     result["restricted_groups"][current_group].append(members)
 
             # multi-line group members
-            if section == "groups" and current_group and line.strip().startswith("TLMGMT\\"):
+            if (
+                section == "groups"
+                and current_group
+                and line.strip().startswith("TLMGMT\\")
+            ):
                 result["restricted_groups"][current_group].append(line.strip())
 
     return {"group_policy": result}
+
 
 # 16_TimeSettings.txt
 # This file is interesting because categories and subcategories can be formatted in different ways in this file
@@ -451,7 +466,7 @@ def parse_time_settings(file_path):
                 continue
 
             # CASE 1: Section + key same line
-            match = re.match(r'^(\S+)\s{2,}([^:]+?)\s*:\s*(.*)$', line)
+            match = re.match(r"^(\S+)\s{2,}([^:]+?)\s*:\s*(.*)$", line)
             if match:
                 section, key, value = match.groups()
 
@@ -464,7 +479,7 @@ def parse_time_settings(file_path):
                 continue
 
             # CASE 2: Key-value under existing section
-            match = re.match(r'^\s+([^:]+?)\s*:\s*(.*)$', line)
+            match = re.match(r"^\s+([^:]+?)\s*:\s*(.*)$", line)
             if match and current_section:
                 key, value = match.groups()
                 data[current_section][key.strip()] = value.strip()
@@ -477,6 +492,7 @@ def parse_time_settings(file_path):
                     data[current_section] = {}
 
     return {"time_settings": data}
+
 
 # 12_LocalAdmins.txt
 def parse_local_admins(file_path):
@@ -516,14 +532,8 @@ def parse_local_admins(file_path):
             if in_members:
                 members.append(line)
 
-    return {
-        "groups": [
-            {
-                "group": group_name,
-                "members": members
-            }
-        ]
-    }
+    return {"groups": [{"group": group_name, "members": members}]}
+
 
 # 03_LocalUsers.txt
 def parse_local_users(file_path):
@@ -532,9 +542,7 @@ def parse_local_users(file_path):
 
     users = []
 
-    pattern = re.compile(
-        r'Domain="([^"]+)",Name="([^"]+)"'
-    )
+    pattern = re.compile(r'Domain="([^"]+)",Name="([^"]+)"')
 
     with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
@@ -553,12 +561,10 @@ def parse_local_users(file_path):
             if match:
                 domain, username = match.groups()
 
-                users.append({
-                    "username": username,
-                    "domain": domain
-                })
+                users.append({"username": username, "domain": domain})
 
     return {"local_users": users}
+
 
 # 22_UserLogonHistory.txt
 def parse_user_logon_history(file_path):
@@ -610,13 +616,12 @@ def parse_user_logon_history(file_path):
                 num_logons = p
 
         if name:
-            users.append({
-                "user": name,
-                "last_logon": last_logon,
-                "logon_count": num_logons
-            })
+            users.append(
+                {"user": name, "last_logon": last_logon, "logon_count": num_logons}
+            )
 
     return {"user_logons": users}
+
 
 # 25_PasswordPolicies.txt
 def parse_password_policies(file_path):
@@ -652,6 +657,7 @@ def parse_password_policies(file_path):
 
     return {"password_policy": policies}
 
+
 # 00_Analysis.txt
 # This one is a little weird. The format for this varies a lot
 # This is a primal version but I assume this file may have different formats as the script changes
@@ -663,7 +669,7 @@ def parse_analysis(file_path):
     results = []
     current_entry = None
 
-    pattern = re.compile(r'^(.*?):(\d+):\s*(.*)$')
+    pattern = re.compile(r"^(.*?):(\d+):\s*(.*)$")
 
     with open(file_path, "r", encoding="utf-8") as f:
         for raw_line in f:
@@ -686,7 +692,7 @@ def parse_analysis(file_path):
                 current_entry = {
                     "source_file": source_file.strip(),
                     "line": int(line_num),
-                    "content": content.strip()
+                    "content": content.strip(),
                 }
 
                 results.append(current_entry)
@@ -700,6 +706,8 @@ def parse_analysis(file_path):
 
     return {"analysis": results}
 
+
+# this file format varies a lot and may need future patching
 # 05_SecurityPolicies-local.txt
 def parse_security_policies_local(file_path):
     if not os.path.exists(file_path):
@@ -714,11 +722,7 @@ def parse_security_policies_local(file_path):
             line = line.strip()
 
             # Skip noise
-            if (
-                not line
-                or line.startswith("***")
-                or line.startswith("Getting")
-            ):
+            if not line or line.startswith("***") or line.startswith("Getting"):
                 continue
 
             # sections
@@ -733,7 +737,7 @@ def parse_security_policies_local(file_path):
                     if not isinstance(data[current_section], list):
                         data[current_section] = [data[current_section]]
                     data[current_section].append({})
-                
+
                 continue
 
             # key-value pairs
@@ -750,6 +754,7 @@ def parse_security_policies_local(file_path):
                     data[current_section][key] = value
 
     return {"security_policies_local": data}
+
 
 # 00_AllOutputs.txt
 # Note: it seems that 05_SecurityPolicies-domain.txt is blank in the samples
@@ -777,6 +782,7 @@ def extract_domain_security_policy(file_path):
     # print(lines)
     return lines
 
+
 # This is the second part of that that parses the sectioned output
 def parse_security_policies_domain(file_path):
     lines = extract_domain_security_policy(file_path)
@@ -789,11 +795,7 @@ def parse_security_policies_domain(file_path):
         line = line.strip()
 
         # Skip noise
-        if (
-            not line
-            or line.startswith("***")
-            or line.startswith("Getting")
-        ):
+        if not line or line.startswith("***") or line.startswith("Getting"):
             continue
 
         # sections
@@ -808,7 +810,7 @@ def parse_security_policies_domain(file_path):
                 if not isinstance(data[current_section], list):
                     data[current_section] = [data[current_section]]
                 data[current_section].append({})
-            
+
             continue
 
         # key-value pairs
@@ -826,7 +828,9 @@ def parse_security_policies_domain(file_path):
 
     return {"security_policies_domain": data}
 
-def build_windows_output(base_path="sampleWindows1", output_path= "windows_output.json"):
+
+# this wraps all the windows parse helpers into one json payload
+def build_windows_output(base_path="sampleWindows1", output_path="windows_output.json"):
     output = {}
 
     output.update(parse_running_services(f"{base_path}/09_Services_Details.csv"))
@@ -835,7 +839,9 @@ def build_windows_output(base_path="sampleWindows1", output_path= "windows_outpu
     output.update(parse_rdp_domain(f"{base_path}/14_RDPSettings_Domain.txt"))
     output.update(parse_rdp_local(f"{base_path}/14_RDPSettings_Local.txt"))
     output.update(parse_installed_patches(f"{base_path}/11_InstalledPatches.txt"))
-    output.update(parse_installed_programs_wmi(f"{base_path}/07_InstalledPrograms_wmioutput.txt"))
+    output.update(
+        parse_installed_programs_wmi(f"{base_path}/07_InstalledPrograms_wmioutput.txt")
+    )
     output.update(parse_audit_policy(f"{base_path}/05b_AuditPolicy.txt"))
     output.update(parse_group_policy(f"{base_path}/05_GroupPolicy.txt"))
     output.update(parse_time_settings(f"{base_path}/16_TimeSettings.txt"))
@@ -844,13 +850,16 @@ def build_windows_output(base_path="sampleWindows1", output_path= "windows_outpu
     output.update(parse_user_logon_history(f"{base_path}/22_UserLogonHistory.txt"))
     output.update(parse_password_policies(f"{base_path}/25_PasswordPolicies.txt"))
     output.update(parse_analysis(f"{base_path}/00_Analysis.txt"))
-    output.update(parse_security_policies_local(f"{base_path}/05_SecurityPolicies-local.txt"))
+    output.update(
+        parse_security_policies_local(f"{base_path}/05_SecurityPolicies-local.txt")
+    )
     output.update(parse_security_policies_domain(f"{base_path}/00_AllOutputs.txt"))
 
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=4)
 
     return output
+
 
 if __name__ == "__main__":
     result = build_windows_output()
