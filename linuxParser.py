@@ -603,7 +603,11 @@ def parse_timesources(file_path):
     if not os.path.exists(file_path):
         return {"timesources": "no file found"}
 
+    import re
+
     sources = []
+
+    host_re = re.compile(r"(?P<host>[A-Za-z0-9\.-]+|\d{1,3}(?:\.\d{1,3}){3})")
 
     with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
@@ -617,9 +621,13 @@ def parse_timesources(file_path):
             ):
                 continue
 
-            parts = line.split()
-            if len(parts) >= 2:
-                sources.append(parts[1])
+            # try to find hostname or IP in the line
+            m = host_re.search(line)
+            if m:
+                host = m.group("host")
+                # strip trailing '>' or other punctuation
+                host = host.rstrip('>,' )
+                sources.append(host)
 
     return {"timesources": sources}
 

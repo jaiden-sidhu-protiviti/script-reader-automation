@@ -36,7 +36,7 @@ def detect_os_type(folder):
 def main():
     # This is a simple headless runner for automation or quick local testing.
     # Update sample_folders to match the folders you want to process.
-    sample_folders = ["sampleWindows1", "sampleLinux1"]
+    sample_folders = ["sampleWindows1", "sampleWindows2", "sampleWindows3", "sampleWindows4"]
 
     site_reports = []
     hosts_meta = []

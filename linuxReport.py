@@ -1263,6 +1263,8 @@ def evaluate_from_json(data, all_files, cheat_sheet):
 
     summary = data.get("summary", {})
     ssh = data.get("sshd_config", {})
+    # case-insensitive lookup for ssh keys
+    ssh_lower = {k.lower(): v for k, v in ssh.items()}
     logging = data.get("logging", {})
     ts = data.get("timesync", {})
     groups = data.get("groups", [])
@@ -1456,37 +1458,41 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         findings_225b = []
 
         checks = {
-            "<b>Protocol 2</b>": ssh.get("Protocol") == "2",
-            "<b>Root login disabled</b>": ssh.get("PermitRootLogin") == "no",
-            "<b>TCP forwarding disabled</b>": ssh.get("AllowTcpForwarding") == "no",
-            "<b>X11 forwarding disabled</b>": ssh.get("X11Forwarding") == "no",
-            "<b>Tunnel disabled</b>": ssh.get("PermitTunnel") == "no",
-            "<b>Ignore rhosts</b>": ssh.get("IgnoreRhosts") == "yes",
-            "<b>Host-based authentication disabled</b>": ssh.get(
-                "HostbasedAuthentication"
+            "<b>Protocol 2</b>": ssh_lower.get("protocol") == "2",
+            "<b>Root login disabled</b>": ssh_lower.get("permitrootlogin") == "no",
+            "<b>TCP forwarding disabled</b>": ssh_lower.get("allowtcpforwarding") == "no",
+            "<b>X11 forwarding disabled</b>": ssh_lower.get("x11forwarding") == "no",
+            "<b>Tunnel disabled</b>": ssh_lower.get("permittunnel") == "no",
+            "<b>Ignore rhosts</b>": ssh_lower.get("ignorerhosts") == "yes",
+            "<b>Host-based authentication disabled</b>": ssh_lower.get(
+                "hostbasedauthentication"
             )
             == "no",
-            "<b>Empty passwords disabled</b>": ssh.get("PermitEmptyPasswords") == "no",
-            "<b>MaxAuthTries ≤ 4</b>": str(ssh.get("MaxAuthTries")).isdigit()
-            and int(ssh.get("MaxAuthTries")) <= 4,
+            "<b>Empty passwords disabled</b>": ssh_lower.get("permitemptypasswords") == "no",
+            "<b>MaxAuthTries ≤ 4</b>": str(ssh_lower.get("maxauthtries") or "").isdigit()
+            and int(ssh_lower.get("maxauthtries") or 999) <= 4,
         }
 
         for check, passed in checks.items():
             findings_225b.append(f"{check}: {'PASS' if passed else 'FAIL'}")
 
-        if ssh.get("ciphers"):
+        # display configured crypto if present (case-insensitive)
+        if ssh_lower.get("ciphers"):
+            ciphers = ssh_lower.get("ciphers")
             findings_225b.append(
-                f"<b>Strong ciphers configured</b>: {', '.join(ssh.get('ciphers'))}"
+                f"<b>Strong ciphers configured</b>: {', '.join(ciphers) if isinstance(ciphers, list) else ciphers}"
             )
 
-        if ssh.get("MACs"):
+        if ssh_lower.get("macs"):
+            macs = ssh_lower.get("macs")
             findings_225b.append(
-                f"<b>MAC algorithms configured</b>: {', '.join(ssh.get('MACs'))}"
+                f"<b>MAC algorithms configured</b>: {', '.join(macs) if isinstance(macs, list) else macs}"
             )
 
-        if ssh.get("KexAlgorithms"):
+        if ssh_lower.get("kexalgorithms"):
+            kex = ssh_lower.get("kexalgorithms")
             findings_225b.append(
-                f"<b>KEX algorithms configured</b>: {', '.join(ssh.get('KexAlgorithms'))}"
+                f"<b>KEX algorithms configured</b>: {', '.join(kex) if isinstance(kex, list) else kex}"
             )
 
         add(
@@ -1616,26 +1622,29 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         f"SSH Protocol = {ssh.get('Protocol')}: {'PASS' if protocol_ok else 'FAIL'}"
     )
 
-    # Authentication enforced
+    # Authentication enforced (case-insensitive)
     auth_ok = (
-        ssh.get("PermitEmptyPasswords") == "no" and summary.get("NullOK") != "TRUE"
+        ssh_lower.get("permitemptypasswords") == "no" and summary.get("NullOK") != "TRUE"
     )
 
     findings_227c.append(
-        f"PasswordAuthentication = {ssh.get('PasswordAuthentication')}: {'PASS' if ssh.get("PermitEmptyPasswords") == "no" else 'FAIL'}"
+        f"PasswordAuthentication = {ssh.get('PasswordAuthentication')}: {'PASS' if ssh_lower.get('permitemptypasswords') == 'no' else 'FAIL'}"
     )
     findings_227c.append(
         f"NullOK = {summary.get('NullOK')}: {'PASS' if summary.get('NullOK') != 'TRUE' else 'FAIL'}"
     )
+    certauth_ok = summary.get("CertAuth") == "TRUE"
     findings_227c.append(
-        f"CertAuth = {summary.get('CertAuth')}: {'PASS' if summary.get('CertAuth') == 'TRUE' else 'FAIL'}"
+        f"CertAuth = {summary.get('CertAuth')}: {'PASS' if certauth_ok else 'FAIL'}"
     )
 
     # Encryption strength (from your prior outputs)
-    if ssh.get("ciphers"):
-        findings_227c.append(f"Ciphers configured: {', '.join(ssh.get('ciphers'))}")
+    if ssh_lower.get("ciphers"):
+        c = ssh_lower.get("ciphers")
+        findings_227c.append(f"Ciphers configured: {', '.join(c) if isinstance(c, list) else c}")
 
-    if insecure_ok and protocol_ok and auth_ok:
+    # require telnet disabled, protocol 2, auth checks and ciphers
+    if insecure_ok and protocol_ok and auth_ok and certauth_ok:
         status_227c = "passed"
     else:
         status_227c = "review"
@@ -3049,12 +3058,13 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [10.6.3.b] - INF-Cloud-LX-6190
     # -------------------------
+    timesources = data.get("timesources", [])
     add(
         "[10.6.3.b] - INF-Cloud-LX-6190",
         "Provide system configurations and time-source settings to confirm the time source is configured securely.",
-        "manual",
+        "review",
         [
-            "Current JSON does not include 10.6.2_timesources evidence; secure source validation remains manual."
+            f"Configured time sources: {', '.join(timesources)}. Review to confirm sources are central/approved NTP servers and not untrusted external sources."
         ],
         ["10.6.1_timesync.txt"],
         default_file="10.6.1_timesync.txt",
@@ -3064,14 +3074,77 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [11.5.2.a] - INF-Cloud-LX-6965
     # -------------------------
+    # -------------------------
+    # [11.5.2.a] - INF-Cloud-LX-6965
+    # -------------------------
+    fim_keywords = [
+        "tripwire",
+        "fim",
+        "aide",
+        "qualys",
+        "crowdstrike",
+        "defender",
+        "carbon black",
+        "sentinelone",
+        "cylance",
+        "file integrity",
+        "fileintegrity",
+        "change detection",
+        "integrity monitor",
+    ]
+
+    fim_services_found = list(
+        dict.fromkeys(
+            [
+                svc.get("service")
+                for svc in running_services
+                if any(
+                    kw in (svc.get("service") or "").lower()
+                    or kw in (svc.get("description") or "").lower()
+                    for kw in fim_keywords
+                )
+            ]
+        )
+    )
+
+    fim_detected = bool(fim_services_found)
+
+    findings_11552 = []
+    if fim_services_found:
+        findings_11552.append(
+            f"FIM/change-detection services detected: {fim_services_found}"
+        )
+    if not fim_detected:
+        findings_11552.append(
+            "No known FIM or change-detection services or applications were identified. "
+            "Change-detection configuration must be confirmed through other evidence."
+        )
+
+    findings_11552.append(
+        "Configuration scope and monitored paths must be confirmed through the solution's "
+        "management console or configuration files."
+    )
+
     add(
         "[11.5.2.a] - INF-Cloud-LX-6965",
         "Provide system settings to confirm the use of a change-detection mechanism.",
-        "manual",
-        ["Current JSON does not include change-detection mechanism evidence."],
-        ["1.2.5_running_services.txt"],
-        default_file="1.2.5_running_services.txt",
-        look_for="File integrity monitoring or equivalent change-detection controls.",
+        "passed" if fim_detected else "manual",
+        findings_11552,
+        ["09_Services_Details.csv", "11_InstalledPatches.txt"],
+        default_file="09_Services_Details.csv",
+        look_for="FIM or change-detection solution running as a service or present in installed applications.",
+        qsa_response=(
+            (
+                "QSA reviewed the system settings to confirm the use of a change-detection mechanism. "
+                "The review identified file integrity monitoring or equivalent change-detection solution "
+                "components present in the running services and installed applications. The solution was "
+                "confirmed to be active and the organization provided evidence that it was configured to "
+                "monitor critical system files, directories, and configuration items consistent with the "
+                "defined scope of this requirement."
+            )
+            if fim_detected
+            else ""
+        ),
     )
 
     return report

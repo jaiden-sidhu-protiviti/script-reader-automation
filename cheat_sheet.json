@@ -198,7 +198,7 @@
     },
     {
         "name": "Trend Micro",
-        "aliases": ["ntrtscan", "tmlisten"]
+        "aliases": ["ntrtscan", "tmlisten", "ds_agent"]
     },
     {
         "name": "Symantec",

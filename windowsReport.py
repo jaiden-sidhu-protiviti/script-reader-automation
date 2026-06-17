@@ -63,6 +63,177 @@ def load_cheat_sheet(path="cheat_sheet.json"):
         return json.load(f)
 
 
+def normalize_rdp_template_value(raw):
+    if raw is None:
+        return raw
+    if isinstance(raw, (list, tuple)):
+        if not raw:
+            return None
+        return normalize_rdp_template_value(raw[0])
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if raw == "":
+            return raw
+        if "," in raw:
+            raw = raw.split(",")[0].strip()
+        low = raw.lower()
+        if low in {"enabled", "1", "true"}:
+            return "1"
+        if low in {"disabled", "0", "false"}:
+            return "0"
+        return raw
+    return raw
+
+
+def get_administrative_template_value(data, key):
+    templates = data.get("group_policy", {}).get("administrative_templates", {})
+    if not isinstance(templates, dict):
+        return None
+
+    # known aliases for common RDP keys (covers minor naming changes)
+    RDP_ADMIN_ALIASES = {
+        "SecurityLayer": ["Securitylayer", "Security Layer"],
+        "fEncryptRPCTraffic": ["fEncryptRpcTraffic", "EncryptRPC", "fEncryptRPC"],
+        "fDisableEncryption": ["DisableEncryption", "fDisableEnc"],
+        "UserAuthentication": ["Userauthentication", "RequireUserAuth"],
+        "MinEncryptionLevel": ["MinEncryptionlevel", "MinimumEncryptionLevel"],
+    }
+
+    found_key = None
+    entry = None
+
+    # try exact match first
+    if key in templates:
+        found_key = key
+        entry = templates.get(key)
+
+    # case-insensitive direct match
+    if entry is None:
+        lower_map = {k.lower(): k for k in templates.keys() if isinstance(k, str)}
+        if key.lower() in lower_map:
+            found_key = lower_map[key.lower()]
+            entry = templates.get(found_key)
+
+    # aliases
+    if entry is None:
+        for alias in RDP_ADMIN_ALIASES.get(key, []):
+            if alias.lower() in lower_map:
+                found_key = lower_map[alias.lower()]
+                entry = templates.get(found_key)
+                break
+
+    # substring match fallback
+    if entry is None:
+        for tk, tv in templates.items():
+            if isinstance(tk, str) and key.lower() in tk.lower():
+                found_key = tk
+                entry = tv
+                break
+
+    if isinstance(entry, dict):
+        value = entry.get("value")
+        if value not in [None, ""]:
+            data.setdefault("_found_admin_rdp_keys", {})[key] = found_key or key
+            return normalize_rdp_template_value(value)
+        state = entry.get("state")
+        if state not in [None, ""]:
+            data.setdefault("_found_admin_rdp_keys", {})[key] = found_key or key
+            return normalize_rdp_template_value(state)
+    return None
+
+
+def get_rdp_setting(data, key):
+    admin_val = get_administrative_template_value(data, key)
+    if admin_val not in [None, ""]:
+        return admin_val
+    # infer fDisableEncryption when explicit setting is absent:
+    if key == "fDisableEncryption":
+        # if minimum encryption level or security layer indicate encryption is active,
+        # assume encryption is not disabled (i.e., fDisableEncryption = 0)
+        min_enc = get_administrative_template_value(data, "MinEncryptionLevel")
+        if min_enc in [None, ""]:
+            min_enc = data.get("rdp_domain", {}).get("MinEncryptionLevel") or data.get("rdp_local", {}).get("MinEncryptionLevel") or data.get("rdp_config", {}).get("MinEncryptionLevel")
+        sec_layer = get_administrative_template_value(data, "SecurityLayer")
+        if sec_layer in [None, ""]:
+            sec_layer = data.get("rdp_domain", {}).get("SecurityLayer") or data.get("rdp_local", {}).get("SecurityLayer") or data.get("rdp_config", {}).get("SecurityLayer")
+        try:
+            if str(min_enc).strip().isdigit() and int(str(min_enc).strip()) >= 3:
+                return "0"
+        except Exception:
+            pass
+        try:
+            if str(sec_layer).strip().isdigit() and int(str(sec_layer).strip()) >= 1:
+                return "0"
+        except Exception:
+            pass
+    # infer SecurityLayer from MinEncryptionLevel when missing
+    if key == "SecurityLayer":
+        min_enc = get_administrative_template_value(data, "MinEncryptionLevel")
+        if min_enc in [None, ""]:
+            min_enc = (
+                data.get("rdp_domain", {}).get("MinEncryptionLevel")
+                or data.get("rdp_local", {}).get("MinEncryptionLevel")
+                or data.get("rdp_config", {}).get("MinEncryptionLevel")
+            )
+        try:
+            if str(min_enc).strip().isdigit() and int(str(min_enc).strip()) >= 3:
+                return "1"
+        except Exception:
+            pass
+    # infer fEncryptRPCTraffic from MinEncryptionLevel or SecurityLayer when missing
+    if key == "fEncryptRPCTraffic":
+        enc = get_administrative_template_value(data, "MinEncryptionLevel")
+        if enc in [None, ""]:
+            enc = (
+                data.get("rdp_domain", {}).get("MinEncryptionLevel")
+                or data.get("rdp_local", {}).get("MinEncryptionLevel")
+                or data.get("rdp_config", {}).get("MinEncryptionLevel")
+            )
+        sec = get_administrative_template_value(data, "SecurityLayer")
+        if sec in [None, ""]:
+            sec = (
+                data.get("rdp_domain", {}).get("SecurityLayer")
+                or data.get("rdp_local", {}).get("SecurityLayer")
+                or data.get("rdp_config", {}).get("SecurityLayer")
+            )
+        try:
+            if (str(enc).strip().isdigit() and int(str(enc).strip()) >= 3) or (
+                str(sec).strip().isdigit() and int(str(sec).strip()) >= 1
+            ):
+                return "1"
+        except Exception:
+            pass
+    # try backup names for UserAuthentication
+    if key == "UserAuthentication":
+        # check common backup keys in rdp sections
+        for candidate in ("UserAuthenticationBackup",):
+            val = (
+                data.get("rdp_domain", {}).get(candidate)
+                or data.get("rdp_local", {}).get(candidate)
+                or data.get("rdp_config", {}).get(candidate)
+            )
+            if val not in (None, ""):
+                return val
+    # fallback to legacy rdp values if administrative templates are absent
+    if key in {
+        "UserAuthentication",
+        "MinEncryptionLevel",
+        "fDisableEncryption",
+        "fEncryptRPCTraffic",
+        "SecurityLayer",
+        "fPromptForPassword",
+        "DisablePasswordSaving",
+        "MaxIdleTime",
+        "MaxDisconnectionTime",
+    }:
+        return (
+            data.get("rdp_domain", {}).get(key)
+            or data.get("rdp_local", {}).get(key)
+            or data.get("rdp_config", {}).get(key)
+        )
+    return data.get("rdp_config", {}).get(key) or data.get("rdp_domain", {}).get(key) or data.get("rdp_local", {}).get(key)
+
+
 def load_key_vars_windows(data):
     def safe(getter):
         try:
@@ -156,11 +327,8 @@ def load_key_vars_windows(data):
         },
         "Other": {
             "NoLMHash": extract(no_lm_hash_raw),
-            "RDP Minimum Encryption (Local)": safe(
-                lambda: data.get("rdp_local", {}).get("MinEncryptionLevel")
-            ),
-            "RDP Minimum Encryption (Domain)": safe(
-                lambda: data.get("rdp_domain", {}).get("MinEncryptionLevel")
+            "RDP Minimum Encryption": safe(
+                lambda: get_rdp_setting(data, "MinEncryptionLevel")
             ),
             "NTP Server": safe(
                 lambda: data.get("time_settings", {})
@@ -1346,6 +1514,21 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     def get_pw(key_gp, key_pp, default=None):
         return account_policies.get(key_gp) or password_policy.get(key_pp) or default
 
+    def get_group_policy_value(key):
+        # Prefer account_policies, then top-level audit_policy, then administrative_templates values
+        val = account_policies.get(key)
+        if val not in (None, ""):
+            return val
+        gp_audit = group_policy.get("audit_policy") or {}
+        if key in gp_audit:
+            return gp_audit.get(key)
+        admin_templates = group_policy.get("administrative_templates") or {}
+        if key in admin_templates:
+            entry = admin_templates.get(key) or {}
+            # entry may store 'value' or 'state'
+            return entry.get("value") or entry.get("state")
+        return None
+
     min_pw_len = int(get_pw("MinimumPasswordLength", "Minimum password length", 0) or 0)
     pw_history = int(
         get_pw("PasswordHistorySize", "Length of password history maintained", 0) or 0
@@ -1379,11 +1562,8 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     proc_audit = audit_policy.get("Detailed Tracking", {}).get("Process Creation", "")
     policy_audit = audit_policy.get("Policy Change", {}).get("Audit Policy Change", "")
     telnet_disabled = str(summary.get("Telnet", "")).upper() != "TRUE"
-    nla_enabled = (
-        str(data.get("rdp_domain", {}).get("UserAuthentication", "")).strip() == "1"
-        or str(data.get("rdp_local", {}).get("UserAuthentication", "")).strip() == "1"
-    )
-    rdp_encryption = rdp.get("SecurityLayer", "")
+    nla_enabled = str(get_rdp_setting(data, "UserAuthentication") or "").strip() == "1"
+    rdp_encryption = get_rdp_setting(data, "SecurityLayer") or ""
 
     # -------------------------
     # [2.2.1.c] - INF-Cloud-LX-1605
@@ -1577,7 +1757,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         "Provide system configurations to confirm that system functions requiring different security needs are separated or appropriately secured together.",
         "review",
         findings_223c,
-        ["09_Services_Details.csv", "14_RDPSettings_Master.txt"],
+        ["09_Services_Details.csv", "05_GroupPolicy.txt"],
         default_file="09_Services_Details.csv",
         look_for="Coexistence of high-risk services with sensitive services or mixed security domains.",
         qsa_response=(
@@ -1641,26 +1821,15 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         # Windows hardening review via RDP config and group policy
         findings_225b = []
 
-        rdp_domain = data.get("rdp_domain", {})
-        rdp_local = data.get("rdp_local", {})
-
-        # Helper: prefer rdp_domain value, fall back to rdp_local
-        def get_rdp(key):
-            if key in rdp_domain:
-                return rdp_domain[key]
-            return rdp_local.get(key)
-
-        nla_val = get_rdp("UserAuthentication")
-        encrypt_level = get_rdp("MinEncryptionLevel")
-        disable_enc = get_rdp("fDisableEncryption")
-        prompt_pw = get_rdp("fPromptForPassword")
-        disable_pw_save = get_rdp("DisablePasswordSaving")
-        enc_rpc = get_rdp("fEncryptRPCTraffic")
-        security_layer = get_rdp("SecurityLayer")
-        pw_complexity = account_policies.get("PasswordComplexity", "")
-        clear_text_pw = account_policies.get("ClearTextPassword") or group_policy.get(
-            "account_policies", {}
-        ).get("ClearTextPassword", "")
+        nla_val = get_rdp_setting(data, "UserAuthentication")
+        encrypt_level = get_rdp_setting(data, "MinEncryptionLevel")
+        disable_enc = get_rdp_setting(data, "fDisableEncryption")
+        prompt_pw = get_rdp_setting(data, "fPromptForPassword")
+        disable_pw_save = get_rdp_setting(data, "DisablePasswordSaving")
+        enc_rpc = get_rdp_setting(data, "fEncryptRPCTraffic")
+        security_layer = get_rdp_setting(data, "SecurityLayer")
+        pw_complexity = get_group_policy_value("PasswordComplexity") or ""
+        clear_text_pw = get_group_policy_value("ClearTextPassword") or ""
 
         checks_225b = {
             f'<b>NLA (UserAuthentication) enabled</b> - {str(nla_val).strip() == "1"}': str(
@@ -1717,8 +1886,8 @@ def evaluate_from_json(data, all_files, cheat_sheet):
             "Provide configuration settings to confirm that additional security features are implemented to reduce the risk of using insecure services, daemons, and protocols.",
             "review",
             findings_225b,
-            ["14_RDPSettings_Master.txt", "00_Analysis.txt"],
-            default_file="14_RDPSettings_Master.txt",
+            ["05_GroupPolicy.txt", "00_Analysis.txt"],
+            default_file="05_GroupPolicy.txt",
             look_for="RDP hardening controls: NLA enabled, encryption level ≥ 3, password saving disabled, RPC encryption enforced.",
             qsa_response=(
                 "QSA reviewed the RDP and group policy configuration settings to evaluate whether additional "
@@ -1775,7 +1944,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         status = "review"
 
     # Password complexity
-    pw_complexity_val = group_policy.get("audit_policy").get("PasswordComplexity", "")
+    pw_complexity_val = get_group_policy_value("PasswordComplexity") or ""
     if str(pw_complexity_val).strip().lower() in ("enabled", "1", "true"):
         findings_226c.append(f"Password complexity = {pw_complexity_val}: PASS")
     else:
@@ -1838,11 +2007,11 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         "passed" if telnet_disabled and nla_enabled else "failed",
         [
             f"Telnet flag in summary = {summary.get('Telnet')}",
-            f"RDP NLA Enabled (UserAuthentication) = {rdp.get('UserAuthentication') or data.get('rdp_domain', {}).get('UserAuthentication')}",
-            f"RDP Security Layer = {rdp.get('SecurityLayer') or data.get('rdp_domain', {}).get('SecurityLayer')}",
+            f"RDP NLA Enabled (UserAuthentication) = {get_rdp_setting(data, 'UserAuthentication') or ''}",
+            f"RDP Security Layer = {get_rdp_setting(data, 'SecurityLayer') or ''}",
         ],
-        ["00_Analysis.txt", "14_RDPSettings_Master.txt"],
-        default_file="14_RDPSettings_Master.txt",
+        ["00_Analysis.txt", "05_GroupPolicy.txt"],
+        default_file="05_GroupPolicy.txt",
         look_for="Telnet disabled and RDP Network Level Authentication (NLA) enabled.",
         qsa_response=(
             (
@@ -1888,21 +2057,15 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # NLA (Windows equivalent of SSH protocol strength)
     protocol_ok = nla_enabled
     findings_227c.append(
-        f"RDP NLA (UserAuthentication) = {rdp.get('UserAuthentication') or data.get('rdp_domain', {}).get('UserAuthentication')}: "
+        f"RDP NLA (UserAuthentication) = {get_rdp_setting(data, 'UserAuthentication') or ''}: "
         f"{'PASS' if protocol_ok else 'FAIL'}"
     )
 
     # Authentication enforced - no empty/null passwords, password prompt required
-    rdp_prompt_pw = str(
-        data.get("rdp_domain", {}).get("fPromptForPassword")
-        or rdp.get("fPromptForPassword", "0")
-    ).strip()
-    rdp_disable_save = str(
-        data.get("rdp_domain", {}).get("DisablePasswordSaving")
-        or rdp.get("DisablePasswordSaving", "0")
-    ).strip()
+    rdp_prompt_pw = str(get_rdp_setting(data, "fPromptForPassword") or "0").strip()
+    rdp_disable_save = str(get_rdp_setting(data, "DisablePasswordSaving") or "0").strip()
     clear_text_val = (
-        str(account_policies.get("ClearTextPassword", "Not Enabled")).strip().lower()
+        str(get_group_policy_value("ClearTextPassword") or "Not Enabled").strip().lower()
     )
 
     auth_ok = (
@@ -1922,16 +2085,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # Encryption strength
-    enc_level = str(
-        data.get("rdp_domain", {}).get("MinEncryptionLevel")
-        or rdp.get("MinEncryptionLevel", "0")
-    ).strip()
-    enc_rpc = str(
-        data.get("rdp_domain", {}).get("fEncryptRPCTraffic")
-        or rdp.get("fEncryptRPCTraffic", "0")
-    ).strip()
+    enc_level = str(get_rdp_setting(data, "MinEncryptionLevel") or "0").strip()
+    enc_rpc = str(get_rdp_setting(data, "fEncryptRPCTraffic") or "0").strip()
     findings_227c.append(
-        f"RDP MinEncryptionLevel = {enc_level}: {'PASS' if enc_level.isdigit() and int(enc_level) >= 3 else 'FAIL'}"
+            f"RDP MinEncryptionLevel = {enc_level}: {'PASS' if enc_level.isdigit() and int(enc_level) >= 3 else 'FAIL'}"
     )
     findings_227c.append(
         f"RDP fEncryptRPCTraffic = {enc_rpc}: {'PASS' if enc_rpc == '1' else 'FAIL'}"
@@ -1944,8 +2101,8 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         "Provide settings for system components and authentication services to confirm that insecure remote login services are not available for non-console administrative access.",
         status_227c,
         findings_227c,
-        ["14_RDPSettings_Master.txt", "00_Analysis.txt"],
-        default_file="14_RDPSettings_Master.txt",
+        ["05_GroupPolicy.txt", "00_Analysis.txt"],
+        default_file="05_GroupPolicy.txt",
         look_for="Absence of insecure remote protocols and presence of secure RDP with NLA, strong encryption, and authentication enforcement.",
         qsa_response=(
             (
@@ -2769,12 +2926,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # [8.2.8] - INF-Cloud-LX-4355
     # -------------------------
 
-    # Windows idle timeout: rdp_domain.MaxIdleTime is in milliseconds
-    # 900000 ms = 15 minutes (900 seconds)
+    # Windows idle timeout: MaxIdleTime is in milliseconds (900000 ms = 15 minutes)
+    # Use administrative templates when available
     # "0" means no timeout is enforced
-    rdp_idle_raw = data.get("rdp_domain", {}).get("MaxIdleTime") or data.get(
-        "rdp_local", {}
-    ).get("MaxIdleTime")
+    rdp_idle_raw = get_rdp_setting(data, "MaxIdleTime")
 
     try:
         rdp_idle_val = (
@@ -2802,10 +2957,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         idle_status,
         [
             idle_note,
-            f"RDP MaxDisconnectionTime = {data.get('rdp_domain', {}).get('MaxDisconnectionTime') or data.get('rdp_local', {}).get('MaxDisconnectionTime', 'Not found')}",
+            f"RDP MaxDisconnectionTime = {get_rdp_setting(data, 'MaxDisconnectionTime') or 'Not found'}",
         ],
-        ["14_RDPSettings_Master.txt", "00_Analysis.txt"],
-        default_file="14_RDPSettings_Master.txt",
+        ["05_GroupPolicy.txt", "00_Analysis.txt"],
+        default_file="05_GroupPolicy.txt",
         look_for="RDP MaxIdleTime set to 900000 ms (900 seconds / 15 minutes) or less, and not 0.",
         qsa_response=(
             (
@@ -2826,28 +2981,16 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # Windows authentication factors: password policy, AD domain membership, NLA, no clear-text
     domain_name = summary.get("Domain", "")
     ad_joined = bool(domain_name and domain_name.lower() not in ("", "workgroup"))
-    clear_text_831 = (
-        str(
-            group_policy.get("audit_policy", "Not Enabled").get(
-                "ClearTextPassword", "Not Enabled"
-            )
-        )
-        .strip()
-        .lower()
-    )
-    pw_complexity_831 = (
-        str(group_policy.get("audit_policy", "").get("PasswordComplexity", ""))
-        .strip()
-        .lower()
-    )
+    clear_text_831 = str(get_group_policy_value("ClearTextPassword") or "Not Enabled").strip().lower()
+    pw_complexity_831 = str(get_group_policy_value("PasswordComplexity") or "").strip().lower()
 
     findings_831b = [
         f"Domain membership = {domain_name or 'Not domain-joined / Workgroup'}",
         f"AD authentication available = {'Yes' if ad_joined else 'No'}",
-        f"RDP NLA (UserAuthentication) = {data.get('rdp_domain', {}).get('UserAuthentication', 'Not found')}",
+        f"RDP NLA (UserAuthentication) = {get_rdp_setting(data, 'UserAuthentication') or 'Not found'}",
         f"PasswordComplexity policy = {pw_complexity_831 or 'Not found'}",
         f"ClearTextPassword policy = {clear_text_831}",
-        f"EnableGuestAccount = {group_policy.get("audit_policy", "Not found").get('EnableGuestAccount', 'Not found')}",
+        f"EnableGuestAccount = {group_policy.get('audit_policy', 'Not found').get('EnableGuestAccount', 'Not found')}",
     ]
 
     add(
@@ -2855,8 +2998,8 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         "Provide observation(s) of authentication factors used to confirm they are functional.",
         "review",
         findings_831b,
-        ["14_RDPSettings_Master.txt", "00_Analysis.txt"],
-        default_file="14_RDPSettings_Master.txt",
+        ["05_GroupPolicy.txt", "00_Analysis.txt"],
+        default_file="05_GroupPolicy.txt",
         look_for="Active authentication methods: domain/AD auth, RDP NLA, password complexity, no clear-text storage.",
         qsa_response=(
             "QSA reviewed the authentication factor configuration to confirm that authentication mechanisms "
@@ -2878,9 +3021,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     rdp_local_832 = data.get("rdp_local", {})
 
     def get_rdp_832(key):
-        if key in rdp_domain_832:
-            return rdp_domain_832[key]
-        return rdp_local_832.get(key)
+        return get_rdp_setting(data, key)
 
     enc_level_832 = str(get_rdp_832("MinEncryptionLevel") or "").strip()
     disable_enc_832 = str(get_rdp_832("fDisableEncryption") or "").strip()
@@ -2921,8 +3062,8 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         "Provide system configuration settings to confirm authentication factors are rendered unreadable with strong cryptography.",
         status_832a,
         findings_832a,
-        ["14_RDPSettings_Master.txt", "09_Services_Details.csv"],
-        default_file="14_RDPSettings_Master.txt",
+        ["05_GroupPolicy.txt", "09_Services_Details.csv"],
+        default_file="05_GroupPolicy.txt",
         look_for="RDP MinEncryptionLevel ≥ 3, fDisableEncryption = 0, fEncryptRPCTraffic = 1, SecurityLayer ≥ 1, NLA enabled.",
         qsa_response=(
             (
@@ -2945,11 +3086,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     findings_832b = []
     status_832b = "review"
 
-    clear_text_832b = (
-        str(group_policy.get("audit_policy", "").get("ClearTextPassword", ""))
-        .strip()
-        .lower()
-    )
+    clear_text_832b = str(get_group_policy_value("ClearTextPassword") or "").strip().lower()
     laps_present = any(
         "local administrator password solution" in (app.get("name") or "").lower()
         for app in installed_apps
@@ -2958,19 +3095,19 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # Primary check: ClearTextPassword policy
     if clear_text_832b in ("not enabled", "0", "false"):
         findings_832b.append(
-            f"ClearTextPassword policy = {account_policies.get('ClearTextPassword')} - "
+            f"ClearTextPassword policy = {get_group_policy_value('ClearTextPassword') or account_policies.get('ClearTextPassword')} - "
             "passwords are not stored using reversible encryption: PASS"
         )
         status_832b = "passed"
     elif clear_text_832b in ("enabled", "1", "true"):
         findings_832b.append(
-            f"ClearTextPassword policy = {account_policies.get('ClearTextPassword')} - "
+            f"ClearTextPassword policy = {get_group_policy_value('ClearTextPassword') or account_policies.get('ClearTextPassword')} - "
             "passwords are stored using reversible (clear-text) encryption: FAIL"
         )
         status_832b = "review"
     else:
         findings_832b.append(
-            f"ClearTextPassword policy = {account_policies.get('ClearTextPassword') or 'Not found'} - "
+            f"ClearTextPassword policy = {get_group_policy_value('ClearTextPassword') or account_policies.get('ClearTextPassword') or 'Not found'} - "
             "unable to determine storage encryption posture."
         )
         status_832b = "review"
@@ -3022,9 +3159,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     rdp_local_832c = data.get("rdp_local", {})
 
     def get_rdp_832c(key):
-        if key in rdp_domain_832c:
-            return rdp_domain_832c[key]
-        return rdp_local_832c.get(key)
+        return get_rdp_setting(data, key)
 
     enc_level_832c = str(get_rdp_832c("MinEncryptionLevel") or "").strip()
     enc_rpc_832c = str(get_rdp_832c("fEncryptRPCTraffic") or "").strip()
@@ -3060,8 +3195,8 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         "Provide evidence to confirm authentication factors are unreadable during transmission.",
         status_832c,
         findings_832c,
-        ["00_Analysis.txt", "14_RDPSettings_Master.txt"],
-        default_file="14_RDPSettings_Master.txt",
+        ["00_Analysis.txt", "05_GroupPolicy.txt"],
+        default_file="05_GroupPolicy.txt",
         look_for="Telnet disabled, RDP NLA enabled, MinEncryptionLevel ≥ 3, fEncryptRPCTraffic = 1.",
         qsa_response=(
             (
@@ -3170,15 +3305,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [8.3.6] - INF-Cloud-LX-4480
     # -------------------------
-    pw_complexity_836 = (
-        str(
-            group_policy.get("audit_policy", "Not found").get(
-                "PasswordComplexity", "Not found"
-            )
-        )
-        .strip()
-        .lower()
-    )
+    pw_complexity_836 = str(get_group_policy_value("PasswordComplexity") or "Not found").strip().lower()
     status_836 = (
         "passed"
         if min_pw_len >= 12 and pw_complexity_836 in ("enabled", "1", "true")
@@ -3191,7 +3318,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         status_836,
         [
             f"MinimumPasswordLength = {min_pw_len}: {'PASS' if min_pw_len >= 12 else 'FAIL'} (requirement: ≥ 12)",
-            f"PasswordComplexity = {group_policy.get('audit_policy', 'Not found').get('PasswordComplexity', 'Not found')}: "
+            f"PasswordComplexity = {get_group_policy_value('PasswordComplexity') or 'Not found'}: "
             f"{'PASS' if pw_complexity_836.lower() in ('enabled', '1', 'true') else 'FAIL'}",
         ],
         ["00_Analysis.txt"],
@@ -3339,12 +3466,12 @@ def evaluate_from_json(data, all_files, cheat_sheet):
             "MFA enforcement cannot be fully established from the current Windows JSON alone.",
             f"Domain membership = {domain_mfa or 'Not domain-joined'} - "
             f"{'domain-level MFA policy may apply' if ad_joined_mfa else 'workgroup host; MFA must be confirmed via other means'}.",
-            f"RDP NLA (UserAuthentication) = {data.get('rdp_domain', {}).get('UserAuthentication', 'Not found')} - "
+            f"RDP NLA (UserAuthentication) = {get_rdp_setting(data, 'UserAuthentication') or 'Not found'} - "
             "NLA is a prerequisite for MFA enforcement over RDP but does not confirm MFA alone.",
             f"Administrators group members: {admin_group_members_7}",
             "Supporting evidence such as AD conditional access policy, RADIUS, or PAM configuration required.",
         ],
-        ["00_Analysis.txt", "14_RDPSettings_Master.txt"],
+        ["00_Analysis.txt", "05_GroupPolicy.txt"],
         default_file="00_Analysis.txt",
         look_for="MFA policy applied to administrative accounts via AD, RADIUS, PAM, or equivalent.",
         qsa_response=(
@@ -3366,15 +3493,15 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         "manual",
         [
             "Remote-access MFA cannot be fully established from the current Windows JSON alone.",
-            f"RDP NLA (UserAuthentication) = {data.get('rdp_domain', {}).get('UserAuthentication', 'Not found')} - "
+            f"RDP NLA (UserAuthentication) = {get_rdp_setting(data, 'UserAuthentication') or 'Not found'} - "
             "NLA is a prerequisite for MFA over RDP but does not confirm MFA enforcement alone.",
-            f"RDP fPromptForPassword = {data.get('rdp_domain', {}).get('fPromptForPassword', 'Not found')}",
+            f"RDP fPromptForPassword = {get_rdp_setting(data, 'fPromptForPassword') or 'Not found'}",
             f"Domain = {domain_mfa or 'Not domain-joined'} - "
             f"{'conditional access or RADIUS MFA policy may apply at the domain level' if ad_joined_mfa else 'no domain; MFA must be confirmed via other means'}.",
             "Supporting evidence such as VPN MFA policy, AD conditional access, or RADIUS configuration required.",
         ],
-        ["00_Analysis.txt", "14_RDPSettings_Master.txt"],
-        default_file="14_RDPSettings_Master.txt",
+        ["00_Analysis.txt", "05_GroupPolicy.txt"],
+        default_file="05_GroupPolicy.txt",
         look_for="MFA enforced for all remote access channels including RDP, VPN, and other remote services.",
         qsa_response=(
             "QSA reviewed the network and system configurations to confirm that MFA was implemented for "
@@ -3889,7 +4016,13 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     ntp_client_enabled = str(ntp_client.get("Enabled", "0")).strip() == "1"
     ntp_type = ntp_params.get("Type", "")
     ntp_server_param = ntp_params.get("NtpServer", "")
-    last_good_sample = ntp_status.get("LastGoodSampleInfo", "")
+    # Last good sample may appear in different places depending on scan source
+    last_good_sample = (
+        ntp_status.get("LastGoodSampleInfo")
+        or time_settings.get("Config", {}).get("LastKnownGoodTime")
+        or ntp_status.get("LastGoodSample")
+        or ""
+    )
 
     # NT5DS = domain hierarchy sync; NTP = explicit server; both are valid synchronized states
     ntp_type_ok = ntp_type.upper() in ("NT5DS", "NTP", "ALLSYNC")
@@ -3992,8 +4125,29 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # [10.6.3.b] - INF-Cloud-LX-6190
     # -------------------------
     ntp_server_configured = bool(ntp_server_param)
-    vmic_provider = time_settings.get("VMICTimeProvider", {})
-    vmic_enabled = str(vmic_provider.get("Enabled", "0")).strip() == "1"
+    # VMICTimeProvider (Hyper-V time sync) may be reported under different keys
+    vmic_provider = (
+        time_settings.get("VMICTimeProvider")
+        or time_settings.get("TimeProviders", {}).get("VMICTimeProvider")
+        or {}
+    )
+    vmic_enabled = False
+    if vmic_provider:
+        vmic_enabled = str(vmic_provider.get("Enabled", "0")).strip() == "1"
+    else:
+        # fallback: search for any value containing the text 'VMICTimeProvider'
+        def _contains_vmic(obj):
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    if _contains_vmic(k) or _contains_vmic(v):
+                        return True
+                return False
+            try:
+                return "vmictimeprovider" in str(obj).lower()
+            except Exception:
+                return False
+
+        vmic_enabled = _contains_vmic(time_settings)
 
     add(
         "[10.6.3.b] - INF-Cloud-LX-6190",

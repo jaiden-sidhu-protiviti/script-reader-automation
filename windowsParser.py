@@ -18,20 +18,19 @@ def parse_running_services(file_path):
     with open(file_path, "r", encoding="utf-8-sig") as f:
         # Skip PowerShell metadata row
         first_line = f.readline()
-        if first_line.startswith("#TYPE"):
-            pass  # already skipped
-        else:
-            # rewind if no metadata (defensive)
+        if not first_line.startswith("#TYPE"):
             f.seek(0)
 
         reader = csv.DictReader(f)
 
         for row in reader:
             service_name = row.get("Name") or row.get("ServiceName")
-            display_name = row.get("Description", "")
-            responding = row.get("Responding", "")
 
-            if responding.strip().lower() == "true":
+            display_name = row.get("DisplayName", "")
+
+            status_value = (row.get("Status") or "").strip().lower()
+
+            if status_value == "running":
                 status = "running"
                 active = "active"
             else:
@@ -352,11 +351,17 @@ def parse_group_policy(file_path):
         "event_log_settings": {},
         "restricted_groups": {},
         "log_settings": {},
+        "administrative_templates": {},
     }
 
     section = None
     current_group = None
     current_log = None
+
+    # admin templates tracking
+    current_gpo = None
+    current_folder_id = None
+    current_entry = {}
 
     with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
@@ -379,10 +384,44 @@ def parse_group_policy(file_path):
                 section = "groups"
                 continue
             elif "Administrative Templates" in line:
-                section = None  # we dont seem to really need this. if needed later, it can be added
+                section = "admin_templates"
                 continue
 
+            # -------------------------
+            # Administrative Templates
+            # -------------------------
+            if section == "admin_templates":
+                if "GPO:" in line:
+                    current_gpo = line.split("GPO:")[1].strip()
+                    continue
+
+                if "Folder Id:" in line:
+                    current_folder_id = line.split("Folder Id:")[1].strip()
+
+                    # extract key → last segment after "\"
+                    key = current_folder_id.split("\\")[-1]
+
+                    current_entry = {
+                        "gpo": current_gpo,
+                        "folder_id": current_folder_id,
+                        "value": None,
+                        "state": None,
+                    }
+
+                    result["administrative_templates"][key] = current_entry
+                    continue
+
+                if "Value:" in line and current_entry:
+                    current_entry["value"] = line.split("Value:")[1].strip()
+                    continue
+
+                if "State:" in line and current_entry:
+                    current_entry["state"] = line.split("State:")[1].strip()
+                    continue
+
+            # -------------------------
             # Account Policies
+            # -------------------------
             if section == "account" and "Policy:" in line:
                 key = line.split("Policy:")[1].strip()
                 continue
@@ -391,7 +430,9 @@ def parse_group_policy(file_path):
                 value = line.split("Computer Setting:")[1].strip()
                 result["account_policies"][key] = value
 
+            # -------------------------
             # Audit Policy
+            # -------------------------
             if section == "audit" and "Policy:" in line:
                 key = line.split("Policy:")[1].strip()
                 continue
@@ -400,7 +441,9 @@ def parse_group_policy(file_path):
                 value = line.split("Computer Setting:")[1].strip()
                 result["audit_policy"][key] = value
 
+            # -------------------------
             # Event Log Settings
+            # -------------------------
             if section == "event_log" and "Log Name:" in line:
                 current_log = line.split("Log Name:")[1].strip()
                 result["event_log_settings"][current_log] = {}
@@ -415,7 +458,9 @@ def parse_group_policy(file_path):
                 if current_log:
                     result["event_log_settings"][current_log][key] = value
 
+            # -------------------------
             # Restricted Groups
+            # -------------------------
             if section == "groups" and "Groupname:" in line:
                 current_group = line.split("Groupname:")[1].strip()
                 result["restricted_groups"][current_group] = []
@@ -447,7 +492,9 @@ def parse_time_settings(file_path):
         return {"time_settings": "no file found"}
 
     data = {}
-    current_section = None
+    parent_section = None
+    # current_subsection may be a string (section) or tuple (parent, subsection)
+    current_subsection = None
 
     with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
@@ -459,37 +506,82 @@ def parse_time_settings(file_path):
                 not line
                 or line.startswith("***")
                 or line.startswith("Getting")
-                or line.startswith("Hive:")
-                or line.startswith("Name")
-                or line.startswith("----")
             ):
                 continue
 
-            # CASE 1: Section + key same line
-            match = re.match(r"^(\S+)\s{2,}([^:]+?)\s*:\s*(.*)$", line)
+            # Reset context on Hive header
+            if line.startswith("Hive:"):
+                parent_section = None
+                current_subsection = None
+                continue
+
+            # Skip table header lines
+            if line.startswith("Name") or line.startswith("----"):
+                continue
+
+            # CASE 3: Section-only line (e.g., "TimeProviders")
+            if not line.startswith(" ") and ":" not in line:
+                parent_section = line.strip()
+                if parent_section not in data:
+                    data[parent_section] = {}
+                current_subsection = None
+                continue
+
+            # CASE 1: Section + key same line (e.g., "VMICTimeProvider DllName : ...")
+            match = re.match(r"^(\S+)\s+([^:]+?)\s*:\s*(.*)$", line)
             if match:
                 section, key, value = match.groups()
+                section = section.strip()
+                key = key.strip()
+                value = value.strip()
 
-                # initialize section
-                current_section = section
-                if current_section not in data:
-                    data[current_section] = {}
+                if parent_section:
+                    # nested under parent_section
+                    if section not in data[parent_section]:
+                        data[parent_section][section] = {}
+                    data[parent_section][section][key] = value
+                    current_subsection = (parent_section, section)
+                else:
+                    if section not in data:
+                        data[section] = {}
+                    data[section][key] = value
+                    current_subsection = section
 
-                data[current_section][key.strip()] = value.strip()
                 continue
 
-            # CASE 2: Key-value under existing section
+            # CASE 2: Indented key-value under the current subsection or parent
             match = re.match(r"^\s+([^:]+?)\s*:\s*(.*)$", line)
-            if match and current_section:
+            if match:
                 key, value = match.groups()
-                data[current_section][key.strip()] = value.strip()
+                key = key.strip()
+                value = value.strip()
+
+                if isinstance(current_subsection, tuple):
+                    p, s = current_subsection
+                    data[p].setdefault(s, {})[key] = value
+                elif current_subsection:
+                    data.setdefault(current_subsection, {})[key] = value
+                elif parent_section:
+                    # no subsection yet; place directly under parent
+                    data[parent_section][key] = value
+                else:
+                    # fallback: top-level key
+                    data[key] = value
+
                 continue
 
-            # CASE 3: Section-only line
-            if not line.startswith(" ") and ":" not in line:
-                current_section = line.strip()
-                if current_section not in data:
-                    data[current_section] = {}
+    # Promote TimeProviders children to top-level for backward compatibility
+    if "TimeProviders" in data and isinstance(data["TimeProviders"], dict):
+        for tp_key, tp_val in data["TimeProviders"].items():
+            if isinstance(tp_val, dict):
+                if tp_key not in data:
+                    data[tp_key] = tp_val
+                else:
+                    # merge without overwriting existing keys
+                    data.setdefault(tp_key, {})
+                    for subk, subv in tp_val.items():
+                        if subk not in data[tp_key]:
+                            data[tp_key][subk] = subv
 
     return {"time_settings": data}
 
@@ -542,29 +634,48 @@ def parse_local_users(file_path):
 
     users = []
 
-    pattern = re.compile(r'Domain="([^"]+)",Name="([^"]+)"')
+    with open(file_path, "r", encoding="utf-8-sig") as f:
+        lines = f.readlines()
 
-    with open(file_path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
+    data_started = False
 
-            # Skip noise
-            if (
-                not line
-                or line.startswith("***")
-                or line.startswith("Getting")
-                or "Win32_UserAccount" not in line
-            ):
-                continue
+    for line in lines:
+        line = line.strip()
 
-            match = pattern.search(line)
-            if match:
-                domain, username = match.groups()
+        # Skip metadata
+        if not line or line.startswith("***"):
+            continue
 
-                users.append({"username": username, "domain": domain})
+        # Detect header separator row
+        if line.startswith("----"):
+            data_started = True
+            continue
+
+        if not data_started:
+            continue
+
+        # Split by whitespace
+        parts = line.split()
+
+        if len(parts) < 3:
+            continue
+
+        # Extract from columns
+        caption = parts[1]  # contains DOMAIN\username
+
+        if "\\" in caption:
+            username = caption.split("\\")[-1]
+        else:
+            username = caption
+
+        users.append(
+            {
+                "username": username,
+                "status": "enabled",
+            }
+        )
 
     return {"local_users": users}
-
 
 # 22_UserLogonHistory.txt
 def parse_user_logon_history(file_path):
@@ -756,75 +867,50 @@ def parse_security_policies_local(file_path):
     return {"security_policies_local": data}
 
 
-# 00_AllOutputs.txt
-# Note: it seems that 05_SecurityPolicies-domain.txt is blank in the samples
-# For this reason, we will be getting that from the corresponding section of 00_AllOutputs.txt
-# This needs to be patched later. This first method gets that section
-def extract_domain_security_policy(file_path):
-    if not os.path.exists(file_path):
-        return []
-
-    lines = []
-    in_section = False
-
-    with open(file_path, "r", encoding="utf-8") as f:
-        for line in f:
-            if "Getting security policies (domain)" in line:
-                in_section = True
-                continue
-
-            if "Getting group policy results" in line:
-                break
-
-            if in_section:
-                lines.append(line.rstrip("\n"))
-
-    # print(lines)
-    return lines
-
-
-# This is the second part of that that parses the sectioned output
+# 05_SecurityPolicies-domain.txt
 def parse_security_policies_domain(file_path):
-    lines = extract_domain_security_policy(file_path)
+    if not os.path.exists(file_path):
+        return {"security_policies_domain": "no file found"}
 
     data = {}
     current_section = None
 
-    for line in lines:
-        raw = line
-        line = line.strip()
+    with open(file_path, "r", encoding="utf-8") as f:
+        for line in f:
+            raw = line
+            line = line.strip()
 
-        # Skip noise
-        if not line or line.startswith("***") or line.startswith("Getting"):
-            continue
+            # Skip noise
+            if not line or line.startswith("***") or line.startswith("Getting"):
+                continue
 
-        # sections
-        if line.startswith("[") and line.endswith("]"):
-            current_section = line.strip("[]")
+            # sections
+            if line.startswith("[") and line.endswith("]"):
+                current_section = line.strip("[]")
 
-            # support duplicate sections → make list
-            if current_section not in data:
-                data[current_section] = {}
-            else:
-                # convert to list if duplicate appears
-                if not isinstance(data[current_section], list):
-                    data[current_section] = [data[current_section]]
-                data[current_section].append({})
+                # support duplicate sections → make list
+                if current_section not in data:
+                    data[current_section] = {}
+                else:
+                    # convert to list if duplicate appears
+                    if not isinstance(data[current_section], list):
+                        data[current_section] = [data[current_section]]
+                    data[current_section].append({})
 
-            continue
+                continue
 
-        # key-value pairs
-        if "=" in line and current_section:
-            key, value = line.split("=", 1)
+            # key-value pairs
+            if "=" in line and current_section:
+                key, value = line.split("=", 1)
 
-            key = key.strip()
-            value = value.strip()
+                key = key.strip()
+                value = value.strip()
 
-            # handle duplicate sections list vs dict
-            if isinstance(data[current_section], list):
-                data[current_section][-1][key] = value
-            else:
-                data[current_section][key] = value
+                # handle duplicate sections list vs dict
+                if isinstance(data[current_section], list):
+                    data[current_section][-1][key] = value
+                else:
+                    data[current_section][key] = value
 
     return {"security_policies_domain": data}
 
@@ -839,9 +925,7 @@ def build_windows_output(base_path="sampleWindows1", output_path="windows_output
     output.update(parse_rdp_domain(f"{base_path}/14_RDPSettings_Domain.txt"))
     output.update(parse_rdp_local(f"{base_path}/14_RDPSettings_Local.txt"))
     output.update(parse_installed_patches(f"{base_path}/11_InstalledPatches.txt"))
-    output.update(
-        parse_installed_programs_wmi(f"{base_path}/07_InstalledPrograms_wmioutput.txt")
-    )
+    output.update(parse_installed_programs_wmi(f"{base_path}/07_InstalledPrograms_wmioutput.txt"))
     output.update(parse_audit_policy(f"{base_path}/05b_AuditPolicy.txt"))
     output.update(parse_group_policy(f"{base_path}/05_GroupPolicy.txt"))
     output.update(parse_time_settings(f"{base_path}/16_TimeSettings.txt"))
@@ -850,10 +934,8 @@ def build_windows_output(base_path="sampleWindows1", output_path="windows_output
     output.update(parse_user_logon_history(f"{base_path}/22_UserLogonHistory.txt"))
     output.update(parse_password_policies(f"{base_path}/25_PasswordPolicies.txt"))
     output.update(parse_analysis(f"{base_path}/00_Analysis.txt"))
-    output.update(
-        parse_security_policies_local(f"{base_path}/05_SecurityPolicies-local.txt")
-    )
-    output.update(parse_security_policies_domain(f"{base_path}/00_AllOutputs.txt"))
+    output.update(parse_security_policies_local(f"{base_path}/05_SecurityPolicies-local.txt"))
+    output.update(parse_security_policies_domain(f"{base_path}/05_SecurityPolicies-domain.txt"))
 
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=4)
