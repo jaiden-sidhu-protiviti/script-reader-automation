@@ -1,0 +1,236 @@
+{
+  "insecure_services_linux": [
+    {
+      "name": "Telnet (TCP 23)",
+      "aliases": ["telnet", "telnetd", "in.telnetd", "telnet.socket"],
+      "notes": "Sends credentials and session data in plaintext; easily captured via sniffing.",
+      "remediation": "Disable service. Replace with SSH (TCP 22) using strong ciphers and key-based authentication."
+    },
+    {
+      "name": "rlogin / rsh / rexec",
+      "aliases": ["rlogin", "rsh", "rexec", "rlogind", "rshd", "rexecd"],
+      "notes": "No encryption; relies on weak trust-based authentication between hosts.",
+      "remediation": "Remove entirely. Use SSH with centralized authentication (e.g., LDAP, Kerberos)."
+    },
+    {
+      "name": "FTP (TCP 21)",
+      "aliases": ["ftp", "ftpd", "vsftpd", "proftpd", "pure-ftpd", "wu-ftpd"],
+      "notes": "Username, password, and file data transmitted in cleartext.",
+      "remediation": "Replace with SFTP (SSH-based) or FTPS (TLS). If not removable, restrict via firewall and encrypt tunnel (VPN)."
+    },
+    {
+      "name": "TFTP (UDP 69)",
+      "aliases": ["tftp", "tftpd", "in.tftpd", "tftp.socket"],
+      "notes": "No authentication or encryption; allows unauthorized file access/transfer.",
+      "remediation": "Disable if unused. If required (e.g., network boot), restrict to isolated network/VLAN and ACLs."
+    },
+    {
+      "name": "HTTP (TCP 80)",
+      "aliases": ["httpd", "apache2", "nginx", "lighttpd"],
+      "notes": "Data transmitted without encryption; susceptible to interception/manipulation.",
+      "remediation": "Enforce HTTPS (TLS 1.2+), redirect HTTP to HTTPS, disable weak ciphers (SSL, TLS 1.0/1.1)."
+    },
+    {
+      "name": "SMTP (no TLS)",
+      "aliases": ["smtp", "sendmail", "postfix", "exim", "qmail"],
+      "notes": "Email content may be transmitted unencrypted between servers.",
+      "remediation": "Enforce STARTTLS or SMTPS, configure secure mail relay, restrict open relay."
+    },
+    {
+      "name": "POP3 / IMAP (110/143)",
+      "aliases": ["pop3", "imap", "dovecot", "courier-imap", "courier-pop"],
+      "notes": "Credentials and email data may be exposed in plaintext.",
+      "remediation": "Use POP3S (995) or IMAPS (993) with TLS; disable plaintext ports."
+    },
+    {
+      "name": "SNMP v1 / v2c",
+      "aliases": ["snmpd", "snmp", "snmptrapd"],
+      "notes": "Uses plaintext community strings for authentication.",
+      "remediation": "Upgrade to SNMPv3 (auth + encryption); restrict access via ACLs and management VLANs."
+    },
+    {
+      "name": "NFS (insecure configs)",
+      "aliases": ["nfs", "nfs-server", "rpc.nfsd", "nfsd"],
+      "notes": "May expose file systems and transmit data unencrypted.",
+      "remediation": "Use NFSv4 with Kerberos, restrict by host/IP, enforce firewall segmentation."
+    },
+    {
+      "name": "SMB (SMBv1/v2)",
+      "aliases": ["smb", "smbd", "nmbd", "samba", "winbind"],
+      "notes": "Older versions vulnerable to exploits (e.g., ransomware); weak/no encryption.",
+      "remediation": "Disable SMBv1/v2; enforce SMBv3 with encryption/signing enabled."
+    },
+    {
+      "name": "finger / rwhod",
+      "aliases": ["finger", "fingerd", "rwhod"],
+      "notes": "Exposes user/system information useful for reconnaissance.",
+      "remediation": "Disable service entirely; no secure replacement typically required."
+    },
+    {
+      "name": "authd / identd",
+      "aliases": ["authd", "identd", "ident"],
+      "notes": "Leaks identity/user information; limited security benefit.",
+      "remediation": "Disable unless explicitly required; restrict access if enabled."
+    },
+    {
+      "name": "RPC / rpcbind",
+      "aliases": ["rpcbind", "portmap", "rpc", "rpc.statd", "rpc-statd"],
+      "notes": "Exposes internal services; commonly targeted during enumeration.",
+      "remediation": "Disable if unused; otherwise restrict to internal networks and firewall allowlists."
+    },
+    {
+      "name": "Sendmail (misconfigured)",
+      "aliases": ["sendmail"],
+      "notes": "Can allow open relay or abuse if not hardened.",
+      "remediation": "Restrict to localhost or authenticated relay; consider hardened MTAs (Postfix with TLS)."
+    },
+    {
+      "name": "Netdump / remote dump services",
+      "aliases": ["netdump", "kdump", "diskdump"],
+      "notes": "Transfers memory dumps (may include sensitive data) over network unencrypted.",
+      "remediation": "Disable or restrict tightly; if required, isolate and encrypt transport."
+    }
+  ],
+
+  "insecure_services_windows": [
+    {
+      "name": "Telnet (TCP 23)",
+      "aliases": ["telnet", "tlntsvr"],
+      "notes": "Transmits credentials in plaintext; deprecated and easily intercepted.",
+      "remediation": "Disable Windows Telnet Server feature. Replace with RDP (secured) or SSH (OpenSSH on Windows)."
+    },
+    {
+      "name": "FTP (TCP 21)",
+      "aliases": ["ftp", "ftpsvc"],
+      "notes": "Sends credentials and data unencrypted; susceptible to sniffing and manipulation.",
+      "remediation": "Replace with SFTP (SSH) or FTPS (TLS); enforce encryption for all file transfers."
+    },
+    {
+      "name": "HTTP (TCP 80)",
+      "aliases": ["http", "iis", "w3svc"],
+      "notes": "Data transmitted without encryption; vulnerable to interception and MITM attacks.",
+      "remediation": "Enforce HTTPS (TLS 1.2+), disable plaintext HTTP, and redirect traffic to HTTPS."
+    },
+    {
+      "name": "SMBv1",
+      "aliases": ["smbv1", "cifs"],
+      "notes": "Deprecated protocol with no encryption, weak authentication, and major exploit history (e.g., WannaCry).",
+      "remediation": "Disable SMBv1. Use SMBv2/SMBv3 with signing and encryption enabled."
+    },
+    {
+      "name": "SMBv1 / SMBv2 (older configs)",
+      "aliases": ["smb", "smbd", "lanmanserver"],
+      "notes": "Older SMB versions lack modern protections and are vulnerable to exploitation.",
+      "remediation": "Enforce SMBv3, enable SMB signing, and enable encryption where supported."
+    },
+    {
+      "name": "NetBIOS (ports 137–139)",
+      "aliases": ["netbios", "netbt"],
+      "notes": "Legacy name resolution and session protocol commonly abused for enumeration and lateral movement.",
+      "remediation": "Disable NetBIOS over TCP/IP where possible; rely on DNS and modern SMB (port 445)."
+    },
+    {
+      "name": "LLMNR (Link-Local Multicast Name Resolution)",
+      "aliases": ["llmnr"],
+      "notes": "Enables credential poisoning and relay attacks; commonly abused in internal networks.",
+      "remediation": "Disable via Group Policy; rely on DNS-only name resolution."
+    },
+    {
+      "name": "NTLM (legacy authentication)",
+      "aliases": ["ntlm", "ntlmv1", "ntlmv2"],
+      "notes": "Weak/fallback authentication allows credential relay and reuse attacks.",
+      "remediation": "Restrict or disable NTLM where possible; enforce Kerberos authentication and strong policies."
+    },
+    {
+      "name": "SNMP v1 / v2c",
+      "aliases": ["snmp", "snmpd", "snmptrapd"],
+      "notes": "Uses plaintext community strings with no encryption.",
+      "remediation": "Upgrade to SNMPv3 (authentication + encryption); restrict access via ACLs and management VLANs."
+    },
+    {
+      "name": "Remote Desktop Protocol (RDP) – weak configs",
+      "aliases": ["rdp", "termservice"],
+      "notes": "Weak ciphers or lack of NLA can expose sessions to interception or brute-force attacks.",
+      "remediation": "Enforce NLA, TLS 1.2+, strong ciphers (AES-GCM), MFA, and restrict access via VPN/firewall."
+    },
+    {
+      "name": "LDAP (unencrypted, TCP 389)",
+      "aliases": ["ldap"],
+      "notes": "Credentials may be transmitted without encryption if not secured.",
+      "remediation": "Use LDAPS (TCP 636) and enforce signing and channel binding."
+    },
+    {
+      "name": "RPC / MS-RPC (port 135)",
+      "aliases": ["rpc", "rpcss"],
+      "notes": "Exposes internal services and is frequently targeted for enumeration and lateral movement.",
+      "remediation": "Restrict via firewall to trusted hosts; disable unused RPC services where possible."
+    },
+    {
+      "name": "VNC (unencrypted variants)",
+      "aliases": ["vnc", "tightvnc", "realvnc"],
+      "notes": "Weak or no encryption; credentials often exposed.",
+      "remediation": "Replace with secure RDP or tunnel VNC through SSH or VPN with encryption."
+    },
+    {
+      "name": "Remote Registry Service",
+      "aliases": ["remoteregistry"],
+      "notes": "Allows remote modification of the registry, increasing attack surface.",
+      "remediation": "Disable service unless explicitly required; restrict access via firewall."
+    }
+  ],
+
+  "av_signatures": [
+    {
+        "name": "Microsoft Defender",
+        "aliases": ["WinDefend", "Sense"]
+    },
+    {
+        "name": "CrowdStrike Falcon",
+        "aliases": ["CSFalconService", "falcon-sensor"]
+    },
+    {
+        "name": "Sophos",
+        "aliases": ["Sophos", "Sophos Anti-Virus", "Sophos MCS Agent"]
+    },
+    {
+        "name": "SentinelOne",
+        "aliases": ["SentinelAgent", "SentinelHelperService"]
+    },
+    {
+        "name": "Trend Micro",
+        "aliases": ["ntrtscan", "tmlisten"]
+    },
+    {
+        "name": "Symantec",
+        "aliases": ["SepMasterService", "SepWscSvc"]
+    },
+    {
+        "name": "ESET",
+        "aliases": ["ekrn"]
+    },
+    {
+        "name": "Bitdefender",
+        "aliases": ["EPProtectedService", "bdservicehost"]
+    },
+    {
+        "name": "Kaspersky",
+        "aliases": ["avp"]
+    },
+    {
+        "name": "McAfee / Trellix",
+        "aliases": ["McAfee", "McShield"]
+    },
+    {
+        "name": "Palo Alto Cortex XDR",
+        "aliases": ["CyveraService", "traps", "traps_pmd"]
+    },
+    {
+        "name": "Carbon Black",
+        "aliases": ["CarbonBlack", "CbDefense"]
+    },
+    {
+        "name": "Cisco AMP",
+        "aliases": ["ciscoamp"]
+    }
+  ]
+}
