@@ -197,16 +197,24 @@ def render_html(
 
     evidence_json = json.dumps(evidence_list)
 
+    # Render floating circular navigation buttons (Home / Prev / Next)
     nav_html = ""
     if nav_links:
-        parts = []
-        if nav_links.get("home"):
-            parts.append(f"<a href='{html.escape(nav_links['home'])}'>Home</a>")
-        if nav_links.get("prev"):
-            parts.append(f"<a href='{html.escape(nav_links['prev'])}'>Previous</a>")
-        if nav_links.get("next"):
-            parts.append(f"<a href='{html.escape(nav_links['next'])}'>Next</a>")
-        nav_html = " | ".join(parts)
+        home = nav_links.get("home")
+        prev = nav_links.get("prev")
+        nxt = nav_links.get("next")
+
+        def link_or_disabled(href, label, title):
+            if href:
+                return f"<a class='nav-btn' href='{html.escape(href)}' title='{html.escape(title)}'>{label}</a>"
+            else:
+                return f"<span class='nav-btn nav-disabled' title='{html.escape(title)}'>{label}</span>"
+
+        home_btn = link_or_disabled(home, '🏠︎', 'Home')
+        prev_btn = link_or_disabled(prev, '◀︎', 'Previous')
+        next_btn = link_or_disabled(nxt, '▶︎', 'Next')
+
+        nav_html = f"<div class='floating-nav'>{home_btn}{prev_btn}{next_btn}</div>"
 
     def build_key_vars_html(key_vars):
         if not key_vars:
@@ -338,6 +346,21 @@ def render_html(
                 width: 55%;
             }
             """)
+        f.write(
+            "    /* Floating circular navigation buttons (bottom-right) */\n"
+        )
+        f.write(
+            "    .floating-nav { position: fixed; right: 18px; bottom: 18px; display: flex; gap: 10px; align-items: center; z-index: 9999; }\n"
+        )
+        f.write(
+            "    .nav-btn { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: #007bff; color: #fff; text-decoration: none; font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.18); transition: transform 0.12s ease, background 0.12s ease; }\n"
+        )
+        f.write(
+            "    .nav-btn:hover { transform: translateY(-3px); background: #0056b3; }\n"
+        )
+        f.write(
+            "    .nav-btn.nav-disabled { background: #dcdcdc; color: #888; cursor: default; pointer-events: none; box-shadow: none; }\n"
+        )
         f.write("</style>\n")
 
         f.write(
@@ -1275,7 +1298,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     wheel = next((g for g in groups if g.get("group") == "wheel"), None)
 
     # -------------------------
-    # [2.2.1.c] - INF-Cloud-LX-1605
+    # [2.2.1.c]
     # -------------------------
     insecure_defs = cheat_sheet.get("insecure_services_linux", [])
     found_insecure = []
@@ -1323,7 +1346,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         )
 
     add(
-        "[2.2.1.c] - INF-Cloud-LX-1605",
+        "[2.2.1.c]",
         "Provide system configuration standards to confirm insecure services are disabled (for example: root, telnet, ftp, tftp, bootp, sendmail, smb, NIS, rexec, rsh, rlogin; daemons such as lpd, dns, DHCP).",
         "review",
         findings_221c,
@@ -1334,12 +1357,12 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [2.2.2.c] - INF-Cloud-LX-1650
+    # [2.2.2.c]
     # -------------------------
     status_222 = "passed" if ssh.get("PermitRootLogin") == "no" else "review"
 
     add(
-        "[2.2.2.c] - INF-Cloud-LX-1650",
+        "[2.2.2.c]",
         "Provide configuration files to confirm that all vendor default accounts are removed or disabled.",
         status_222,
         [
@@ -1354,10 +1377,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [2.2.3.b] - INF-Cloud-LX-1685
+    # [2.2.3.b]
     # -------------------------
     add(
-        "[2.2.3.b] - INF-Cloud-LX-1685",
+        "[2.2.3.b]",
         "Provide system configurations to confirm that primary functions requiring different access levels are separated.",
         "manual",
         [
@@ -1371,7 +1394,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [2.2.3.c] - INF-Cloud-LX-1690
+    # [2.2.3.c]
     # -------------------------
     insecure_defs = cheat_sheet.get("insecure_services_linux", [])
     detected_categories = set()
@@ -1407,7 +1430,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         )
 
     add(
-        "[2.2.3.c] - INF-Cloud-LX-1690",
+        "[2.2.3.c]",
         "Provide system configurations to confirm that system functions requiring different security needs are separated or appropriately secured together.",
         "review",
         findings_223c,
@@ -1418,10 +1441,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [2.2.4.b] - INF-Cloud-LX-1710
+    # [2.2.4.b]
     # -------------------------
     add(
-        "[2.2.4.b] - INF-Cloud-LX-1710",
+        "[2.2.4.b]",
         "Provide evidence to confirm that unnecessary functions are removed or disabled.",
         "review",
         [
@@ -1435,12 +1458,12 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [2.2.5.b] - INF-Cloud-LX-1745
+    # [2.2.5.b]
     # -------------------------
 
     if not found_insecure:
         add(
-            "[2.2.5.b] - INF-Cloud-LX-1745",
+            "[2.2.5.b]",
             "Provide configuration settings to confirm that additional security features are implemented to reduce the risk of using insecure services, daemons, and protocols.",
             "passed",
             [
@@ -1496,7 +1519,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
             )
 
         add(
-            "[2.2.5.b] - INF-Cloud-LX-1745",
+            "[2.2.5.b]",
             "Provide configuration settings to confirm that additional security features are implemented to reduce the risk of using insecure services, daemons, and protocols.",
             "review",
             findings_225b,
@@ -1507,7 +1530,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         )
 
     # -------------------------
-    # [2.2.6.c] - INF-Cloud-LX-1770
+    # [2.2.6.c]
     # -------------------------
 
     findings_226c = []
@@ -1557,7 +1580,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         findings_226c.append("No obvious generic accounts: PASS")
 
     add(
-        "[2.2.6.c] - INF-Cloud-LX-1770",
+        "[2.2.6.c]",
         "Provide system configurations to confirm that common security parameters are set appropriately and in accordance with configuration standards.",
         status,
         findings_226c,
@@ -1568,10 +1591,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [2.2.7.b] - INF-Cloud-LX-1800
+    # [2.2.7.b]
     # -------------------------
     add(
-        "[2.2.7.b] - INF-Cloud-LX-1800",
+        "[2.2.7.b]",
         "Provide system configurations to confirm that non-console administrative access is managed in accordance with this requirement.",
         (
             "passed"
@@ -1590,7 +1613,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [2.2.7.c] - INF-Cloud-LX-1810
+    # [2.2.7.c]
     # -------------------------
 
     findings_227c = []
@@ -1650,7 +1673,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         status_227c = "review"
 
     add(
-        "[2.2.7.c] - INF-Cloud-LX-1810",
+        "[2.2.7.c]",
         "Provide settings for system components and authentication services to confirm that insecure remote login services are not available for non-console administrative access.",
         status_227c,
         findings_227c,
@@ -1688,7 +1711,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
                 break  # stop checking more aliases for this service
 
     # -------------------------
-    # [5.2.1.a] - INF-Cloud-LX-2895
+    # [5.2.1.a]
     # -------------------------
     status_521 = "passed" if detected_av else "review"
 
@@ -1703,7 +1726,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         findings_521.append("No known AV/EDR services detected.")
 
     add(
-        "[5.2.1.a] - INF-Cloud-LX-2895",
+        "[5.2.1.a]",
         "Provide evidence that an anti-malware solution is deployed where required.",
         status_521,
         findings_521,
@@ -1714,10 +1737,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [5.3.1.a] - INF-Cloud-LX-2990
+    # [5.3.1.a]
     # -------------------------
     add(
-        "[5.3.1.a] - INF-Cloud-LX-2990",
+        "[5.3.1.a]",
         "Provide anti-malware solution configurations to confirm the solution is configured appropriately.",
         "passed" if detected_av else "review",
         [
@@ -1734,10 +1757,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [5.3.1.b] - INF-Cloud-LX-3000
+    # [5.3.1.b]
     # -------------------------
     add(
-        "[5.3.1.b] - INF-Cloud-LX-3000",
+        "[5.3.1.b]",
         "Provide logs to confirm that the anti-malware solution(s) and definitions are current and have been promptly deployed.",
         "passed" if detected_av else "review",
         [
@@ -1754,10 +1777,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [5.3.2.a] - INF-Cloud-LX-3020
+    # [5.3.2.a]
     # -------------------------
     add(
-        "[5.3.2.a] - INF-Cloud-LX-3020",
+        "[5.3.2.a]",
         "Provide anti-malware configurations to confirm the solution is configured for active monitoring.",
         "passed" if detected_av else "review",
         [
@@ -1774,10 +1797,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [5.3.2.b] - INF-Cloud-LX-3030
+    # [5.3.2.b]
     # -------------------------
     add(
-        "[5.3.2.b] - INF-Cloud-LX-3030",
+        "[5.3.2.b]",
         "Provide evidence to confirm the anti-malware solution is enabled.",
         "passed" if detected_av else "review",
         [
@@ -1793,10 +1816,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [5.3.2.c] - INF-Cloud-LX-3040
+    # [5.3.2.c]
     # -------------------------
     add(
-        "[5.3.2.c] - INF-Cloud-LX-3040",
+        "[5.3.2.c]",
         "Provide logs to confirm that the solution(s) is enabled in accordance with at least one of the elements specified in this requirement",
         "passed" if detected_av else "review",
         [
@@ -1813,10 +1836,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [5.3.4] - INF-Cloud-LX-3130
+    # [5.3.4]
     # -------------------------
     add(
-        "[5.3.4] - INF-Cloud-LX-3130",
+        "[5.3.4]",
         "Provide anti-malware solution(s) configurations to confirm logs are enabled and retained in accordance with Requirement 10.5.1.",
         "passed" if detected_av else "review",
         [
@@ -1833,10 +1856,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [5.3.5.a] - INF-Cloud-LX-3150
+    # [5.3.5.a]
     # -------------------------
     add(
-        "[5.3.5.a] - INF-Cloud-LX-3150",
+        "[5.3.5.a]",
         "Provide anti-malware solution configurations to confirm that the anti-malware mechanisms cannot be disabled or altered by users.",
         "passed" if detected_av else "review",
         [
@@ -1853,10 +1876,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [5.3.5.b] - INF-Cloud-LX-3160
+    # [5.3.5.b]
     # -------------------------
     add(
-        "[5.3.5.b] - INF-Cloud-LX-3160",
+        "[5.3.5.b]",
         "Provide observation(s) to confirm that attempts to disable or remove anti-malware are prevented.",
         "manual",
         ["Requires manual observation or management policy evidence."],
@@ -1866,10 +1889,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [6.3.3.b] - INF-Cloud-LX-3445
+    # [6.3.3.b]
     # -------------------------
     add(
-        "[6.3.3.b] - INF-Cloud-LX-3445",
+        "[6.3.3.b]",
         "Provide system component and patch/update data to confirm vulnerabilities are patched according to policy.",
         "review",
         [
@@ -1884,10 +1907,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [7.2.1.b] - INF-Cloud-LX-3850
+    # [7.2.1.b]
     # -------------------------
     add(
-        "[7.2.1.b] - INF-Cloud-LX-3850",
+        "[7.2.1.b]",
         "Provide user access settings to confirm access is based on job/function need.",
         "review",
         [
@@ -1900,10 +1923,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [7.2.2.b] - INF-Cloud-LX-3870
+    # [7.2.2.b]
     # -------------------------
     add(
-        "[7.2.2.b] - INF-Cloud-LX-3870",
+        "[7.2.2.b]",
         "Provide user access settings to confirm privileges assigned are based on job function.",
         "review",
         [
@@ -1916,23 +1939,42 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [7.2.3.b] - INF-Cloud-LX-3915
+    # [7.2.3.b]
     # -------------------------
+    # Automated review: enumerate privileged accounts and produce evidence for manual approval verification
+    uid0_accounts = [u.get("username") for u in passwd_list if u.get("uid") == 0]
+    wheel_members = wheel.get("members") if wheel else []
+    sudoers_entries = data.get("sudoers", [])
+    sudo_users = []
+    for s in sudoers_entries:
+        if isinstance(s, dict):
+            sudo_users.append(s.get("user") or s.get("access") or str(s))
+        else:
+            sudo_users.append(str(s))
+
+    findings_723b = [
+        f"Observed {len(passwd_list)} local accounts.",
+        f"UID 0 accounts: {uid0_accounts}",
+        f"Wheel group members: {wheel_members}",
+        f"Sudoers entries: {sudo_users}",
+        "Documented approval evidence (tickets/policies) not present in JSON; review required to confirm approvals.",
+    ]
+
     add(
-        "[7.2.3.b] - INF-Cloud-LX-3915",
+        "[7.2.3.b]",
         "Provide user IDs and assigned privileges to confirm documented approval exists.",
-        "manual",
-        ["Requires external approval/ticket evidence not present in JSON."],
-        ["8.2_enabledusers.txt", "passwd.txt"],
+        "review",
+        findings_723b,
+        ["8.2_enabledusers.txt", "passwd.txt", "sudoers.txt"],
         default_file="8.2_enabledusers.txt",
         look_for="Documented approvals matching granted access.",
     )
 
     # -------------------------
-    # [7.2.5.b] - INF-Cloud-LX-3970
+    # [7.2.5.b]
     # -------------------------
     add(
-        "[7.2.5.b] - INF-Cloud-LX-3970",
+        "[7.2.5.b]",
         "Provide privileges associated with system and application accounts to confirm proper configuration.",
         "review",
         [
@@ -1945,10 +1987,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [7.3.1] - INF-Cloud-LX-4075
+    # [7.3.1]
     # -------------------------
     add(
-        "[7.3.1] - INF-Cloud-LX-4075",
+        "[7.3.1]",
         "Provide system settings to confirm access is managed for each system component.",
         "manual",
         [
@@ -1960,10 +2002,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [7.3.2] - INF-Cloud-LX-4090
+    # [7.3.2]
     # -------------------------
     add(
-        "[7.3.2] - INF-Cloud-LX-4090",
+        "[7.3.2]",
         "Provide system settings to confirm the access control system is configured appropriately.",
         "manual",
         ["Current JSON does not fully model access control framework configuration."],
@@ -1973,10 +2015,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [7.3.3] - INF-Cloud-LX-4110
+    # [7.3.3]
     # -------------------------
     add(
-        "[7.3.3] - INF-Cloud-LX-4110",
+        "[7.3.3]",
         "Provide system settings to confirm the access control system is set to default deny access.",
         "manual",
         ["Default-deny posture cannot be fully established from current JSON alone."],
@@ -1986,7 +2028,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.2.1.b] - INF-Cloud-LX-4180
+    # [8.2.1.b]
     # -------------------------
 
     enabled_users = data.get("enabled_users", [])
@@ -2045,7 +2087,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
             )
 
     add(
-        "[8.2.1.b] - INF-Cloud-LX-4180",
+        "[8.2.1.b]",
         "Provide other evidence to confirm that access to system components and cardholder data can be uniquely identified and associated with individuals.",
         status_821b,
         findings_821b,
@@ -2055,10 +2097,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.2.2.a] - INF-Cloud-LX-4190
+    # [8.2.2.a]
     # -------------------------
     add(
-        "[8.2.2.a] - INF-Cloud-LX-4190",
+        "[8.2.2.a]",
         "Provide user account evidence to confirm shared or generic credentials are not used except by exception.",
         "review",
         [
@@ -2071,7 +2113,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.2.4] - INF-Cloud-LX-4265
+    # [8.2.4]
     # -------------------------
 
     user_changes = data.get("user_changes", "no file found")
@@ -2105,7 +2147,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
             findings_824.append(f"Observed change: {change}")
 
     add(
-        "[8.2.4] - INF-Cloud-LX-4265",
+        "[8.2.4]",
         "Provide system settings to confirm the activity has been managed.",
         status_824,
         findings_824,
@@ -2115,11 +2157,11 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.2.6] - INF-Cloud-LX-4300
+    # [8.2.6]
     # -------------------------
     inactive_flag = summary.get("Inactive")
     add(
-        "[8.2.6] - INF-Cloud-LX-4300",
+        "[8.2.6]",
         "Provide evidence to confirm inactive user accounts are removed or disabled within 90 days of inactivity.",
         "failed" if inactive_flag == "TRUE" else "passed",
         [f"Inactive flag in summary = {inactive_flag}"],
@@ -2129,7 +2171,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.2.8] - INF-Cloud-LX-4355
+    # [8.2.8]
     # -------------------------
     tmout = summary.get("IdleTimeout")
     try:
@@ -2145,7 +2187,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         idle_status = "review"
 
     add(
-        "[8.2.8] - INF-Cloud-LX-4355",
+        "[8.2.8]",
         "Provide evidence to confirm idle sessions require re-authentication after no more than 15 minutes (TMOUT >= 900 seconds).",
         idle_status,
         [f"IdleTimeout / TMOUT value = {tmout}"],
@@ -2155,10 +2197,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.3.1.b] - INF-Cloud-LX-4370
+    # [8.3.1.b]
     # -------------------------
     add(
-        "[8.3.1.b] - INF-Cloud-LX-4370",
+        "[8.3.1.b]",
         "Provide observation(s) of authentication factors used to confirm they are functional.",
         "review",
         [
@@ -2173,7 +2215,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.3.2.a] - INF-Cloud-LX-4390
+    # [8.3.2.a]
     # -------------------------
 
     findings_832a = []
@@ -2224,7 +2266,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         status_832a = "review"
 
     add(
-        "[8.3.2.a] - INF-Cloud-LX-4390",
+        "[8.3.2.a]",
         "Provide system configuration settings to confirm authentication factors are rendered unreadable with strong cryptography.",
         status_832a,
         findings_832a,
@@ -2245,7 +2287,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.3.2.b] - INF-Cloud-LX-4400
+    # [8.3.2.b]
     # -------------------------
 
     enc = summary.get("Encryption", "")
@@ -2307,7 +2349,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         status_832b = "review"
 
     add(
-        "[8.3.2.b] - INF-Cloud-LX-4400",
+        "[8.3.2.b]",
         "Provide repositories of authentication factors to confirm they are unreadable during storage.",
         status_832b,
         findings_832b,
@@ -2327,7 +2369,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.3.2.c] - INF-Cloud-LX-4410
+    # [8.3.2.c]
     # -------------------------
 
     telnet_val = str(summary.get("Telnet", "")).upper()
@@ -2347,7 +2389,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     status_832c = "passed" if (telnet_ok and proto_ok and ciphers_ok) else "review"
 
     add(
-        "[8.3.2.c] - INF-Cloud-LX-4410",
+        "[8.3.2.c]",
         "Provide evidence to confirm authentication factors are unreadable during transmission.",
         status_832c,
         [
@@ -2372,7 +2414,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.3.4.a] - INF-Cloud-LX-4440
+    # [8.3.4.a]
     # -------------------------
 
     # summary values arrive as "deny=3" and "unlock_time=3600" [3]
@@ -2405,7 +2447,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         status834a = attempts_parsed <= 10 and timer_parsed >= 1800 and edr_active
 
     add(
-        "[8.3.4.a] - INF-Cloud-LX-4440",
+        "[8.3.4.a]",
         "Provide system configuration settings to confirm authentication parameters are set appropriately for failed logon controls.",
         "passed" if status834a else "review",
         [
@@ -2428,7 +2470,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.3.4.b] - INF-Cloud-LX-4450
+    # [8.3.4.b]
     # -------------------------
 
     findings_834b = []
@@ -2465,7 +2507,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         status_834b = "review"
 
     add(
-        "[8.3.4.b] - INF-Cloud-LX-4450",
+        "[8.3.4.b]",
         "Provide evidence to confirm failed logons are limited to 10 tries and a 30-minute unlock timer is enforced.",
         status_834b,
         findings_834b,
@@ -2486,7 +2528,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.3.6] - INF-Cloud-LX-4480
+    # [8.3.6]
     # -------------------------
 
     pw_min = summary.get("PwMinLen")
@@ -2574,7 +2616,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     status_836 = "passed" if (length_ok and complexity_ok) else "review"
 
     add(
-        "[8.3.6] - INF-Cloud-LX-4480",
+        "[8.3.6]",
         "Provide password configuration settings to confirm passwords meet minimum length and complexity requirements.",
         status_836,
         findings_836,
@@ -2596,7 +2638,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.3.7] - INF-Cloud-LX-4490
+    # [8.3.7]
     # -------------------------
 
     pw_history_val = summary.get("PwHistory")
@@ -2620,7 +2662,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         )
 
     add(
-        "[8.3.7] - INF-Cloud-LX-4490",
+        "[8.3.7]",
         "Provide evidence to confirm password history prevents reuse of at least the required number of prior passwords.",
         status_837,
         findings_837,
@@ -2640,7 +2682,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.3.9] - INF-Cloud-LX-4540
+    # [8.3.9]
     # -------------------------
 
     pw_ages = data.get("pw_ages", "no file found")
@@ -2702,7 +2744,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         )
 
     add(
-        "[8.3.9] - INF-Cloud-LX-4540",
+        "[8.3.9]",
         "Provide system configuration settings to confirm passwords/passphrases are changed according to policy.",
         status_839,
         findings_839,
@@ -2712,10 +2754,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.4.1.a] - INF-Cloud-LX-4610
+    # [8.4.1.a]
     # -------------------------
     add(
-        "[8.4.1.a] - INF-Cloud-LX-4610",
+        "[8.4.1.a]",
         "Provide network and/or system configurations to confirm MFA is required for all administrative access.",
         "manual",
         ["MFA requirement cannot be established from current Linux JSON alone."],
@@ -2725,10 +2767,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.4.2.a] - INF-Cloud-LX-4630
+    # [8.4.2.a]
     # -------------------------
     add(
-        "[8.4.2.a] - INF-Cloud-LX-4630",
+        "[8.4.2.a]",
         "Provide network and/or system configurations to confirm MFA is implemented for all remote access.",
         "manual",
         ["Remote-access MFA cannot be established from current Linux JSON alone."],
@@ -2738,11 +2780,11 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.6.1] - INF-Cloud-LX-4740
+    # [8.6.1]
     # -------------------------
     interactive_users = [u.get("username") for u in passwd_list if u.get("interactive")]
     add(
-        "[8.6.1] - INF-Cloud-LX-4740",
+        "[8.6.1]",
         "Provide application and system accounts to confirm all such accounts have unique passwords/passphrases.",
         "review",
         [f"Interactive accounts observed = {', '.join(interactive_users)}"],
@@ -2752,10 +2794,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.6.2.b] - INF-Cloud-LX-4780
+    # [8.6.2.b]
     # -------------------------
     add(
-        "[8.6.2.b] - INF-Cloud-LX-4780",
+        "[8.6.2.b]",
         "Provide scripts, configuration/property files, and source code to confirm no hard-coded credentials exist.",
         "manual",
         [
@@ -2767,10 +2809,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [8.6.3.c] - INF-Cloud-LX-4820
+    # [8.6.3.c]
     # -------------------------
     add(
-        "[8.6.3.c] - INF-Cloud-LX-4820",
+        "[8.6.3.c]",
         "Provide system configuration settings to confirm passwords/passphrases for system accounts are changed regularly.",
         "manual",
         [
@@ -2782,11 +2824,11 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [10.2.1] - INF-Cloud-LX-5705
+    # [10.2.1]
     # -------------------------
     log_active = summary.get("LogActive")
     add(
-        "[10.2.1] - INF-Cloud-LX-5705",
+        "[10.2.1]",
         "Provide audit log configuration to confirm logging is enabled and active.",
         "passed" if log_active == "active" else "failed",
         [f"LogActive = {log_active}", f"LogLevel = {summary.get('LogLevel')}"],
@@ -2812,12 +2854,12 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # print(attempts_configured)
 
     # -------------------------
-    # [10.2.1.2] - INF-Cloud-LX-5730
+    # [10.2.1.2]
     # -------------------------
     status_10212 = "passed" if (log_is_active and has_auth) else "review"
 
     add(
-        "[10.2.1.2] - INF-Cloud-LX-5730",
+        "[10.2.1.2]",
         "Provide audit log configurations to confirm all actions taken by any individual with root/administrative access are logged.",
         status_10212,
         [
@@ -2841,13 +2883,13 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [10.2.1.3] - INF-Cloud-LX-5750
+    # [10.2.1.3]
     # -------------------------
     forwarding_configured = logging.get("forwarding_configured", False)
     status_10213 = "passed" if (log_is_active and forwarding_configured) else "review"
 
     add(
-        "[10.2.1.3] - INF-Cloud-LX-5750",
+        "[10.2.1.3]",
         "Provide audit log configurations to confirm access to all audit logs is captured.",
         status_10213,
         [
@@ -2871,14 +2913,14 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [10.2.1.4] - INF-Cloud-LX-5770
+    # [10.2.1.4]
     # -------------------------
     status_10214 = (
         "passed" if (log_is_active and has_auth and attempts_configured) else "review"
     )
 
     add(
-        "[10.2.1.4] - INF-Cloud-LX-5770",
+        "[10.2.1.4]",
         "Provide audit log configurations to confirm invalid logical access attempts are logged.",
         status_10214,
         [
@@ -2905,12 +2947,12 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [10.2.1.5] - INF-Cloud-LX-5790
+    # [10.2.1.5]
     # -------------------------
     status_10215 = "passed" if (log_is_active and has_auth) else "review"
 
     add(
-        "[10.2.1.5] - INF-Cloud-LX-5790",
+        "[10.2.1.5]",
         "Provide audit log configurations to confirm changes to identification and authentication are logged.",
         status_10215,
         [
@@ -2934,12 +2976,12 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [10.2.1.6] - INF-Cloud-LX-5810
+    # [10.2.1.6]
     # -------------------------
     status_10216 = "passed" if (log_is_active and has_auth) else "review"
 
     add(
-        "[10.2.1.6] - INF-Cloud-LX-5810",
+        "[10.2.1.6]",
         "Provide audit log configurations to confirm privileged access is logged.",
         status_10216,
         [
@@ -2963,12 +3005,12 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [10.2.1.7] - INF-Cloud-LX-5830
+    # [10.2.1.7]
     # -------------------------
     status_10217 = "passed" if (log_is_active and has_kern) else "review"
 
     add(
-        "[10.2.1.7] - INF-Cloud-LX-5830",
+        "[10.2.1.7]",
         "Provide audit log configurations to confirm creation and deletion of system-level objects are logged.",
         status_10217,
         [
@@ -2992,11 +3034,11 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [10.3.3] - INF-Cloud-LX-5920
+    # [10.3.3]
     # -------------------------
     forwarding = logging.get("forwarding_configured")
     add(
-        "[10.3.3] - INF-Cloud-LX-5920",
+        "[10.3.3]",
         "Provide system configuration settings to confirm audit logs are backed up to a secure, central, internal log server or other difficult-to-modify media.",
         "passed" if forwarding else "failed",
         [
@@ -3010,13 +3052,13 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [10.6.1] - INF-Cloud-LX-6166
+    # [10.6.1]
     # -------------------------
     synchronized = ts.get("synchronized")
     ntp_active = ts.get("ntp_service") == "active"
     status_1061 = "passed" if (synchronized and ntp_active) else "failed"
     add(
-        "[10.6.1] - INF-Cloud-LX-6166",
+        "[10.6.1]",
         "Provide evidence to confirm system clocks and time are synchronized using time-synchronization technology.",
         status_1061,
         [
@@ -3030,10 +3072,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [10.6.2] - INF-Cloud-LX-6170
+    # [10.6.2]
     # -------------------------
     add(
-        "[10.6.2] - INF-Cloud-LX-6170",
+        "[10.6.2]",
         "Provide time synchronization settings to confirm systems are configured to the correct and consistent time.",
         status_1061,
         [f"Synchronized = {synchronized}", f"NTP service = {ts.get('ntp_service')}"],
@@ -3043,10 +3085,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [10.6.3.a] - INF-Cloud-LX-6180
+    # [10.6.3.a]
     # -------------------------
     add(
-        "[10.6.3.a] - INF-Cloud-LX-6180",
+        "[10.6.3.a]",
         "Provide system configurations and time-synchronization settings to confirm time accuracy is maintained.",
         "review",
         [f"Synchronized = {synchronized}", f"NTP service = {ts.get('ntp_service')}"],
@@ -3056,11 +3098,11 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [10.6.3.b] - INF-Cloud-LX-6190
+    # [10.6.3.b]
     # -------------------------
     timesources = data.get("timesources", [])
     add(
-        "[10.6.3.b] - INF-Cloud-LX-6190",
+        "[10.6.3.b]",
         "Provide system configurations and time-source settings to confirm the time source is configured securely.",
         "review",
         [
@@ -3072,10 +3114,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     # -------------------------
-    # [11.5.2.a] - INF-Cloud-LX-6965
+    # [11.5.2.a]
     # -------------------------
     # -------------------------
-    # [11.5.2.a] - INF-Cloud-LX-6965
+    # [11.5.2.a]
     # -------------------------
     fim_keywords = [
         "tripwire",
@@ -3126,7 +3168,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     )
 
     add(
-        "[11.5.2.a] - INF-Cloud-LX-6965",
+        "[11.5.2.a]",
         "Provide system settings to confirm the use of a change-detection mechanism.",
         "passed" if fim_detected else "manual",
         findings_11552,

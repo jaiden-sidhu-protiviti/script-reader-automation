@@ -181,8 +181,8 @@
 
   "av_signatures": [
     {
-        "name": "Microsoft Defender",
-        "aliases": ["WinDefend", "Sense"]
+      "name": "Microsoft Defender",
+      "aliases": ["WinDefend", "Sense", "MpCmdRun", "MsMpEng", "MpDefenderCoreService", "MpDlpService", "DlpUserAgent", "SecurityHealthService"]
     },
     {
         "name": "CrowdStrike Falcon",

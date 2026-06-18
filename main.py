@@ -1,5 +1,5 @@
 # main.py
-# Main GUI and pipeline controller for the Zip Audit report builder.
+# Main GUI and pipeline controller for the Script Output Report Builder.
 # Detects host folders, determines whether they contain Linux or Windows output,
 # normalizes the data via parsers, and generates JSON and HTML reports.
 
@@ -11,6 +11,8 @@ import uuid
 import webbrowser
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from tkinter import simpledialog
+import shutil
 
 from linuxParser import build_linux_output
 from windowsParser import build_windows_output
@@ -20,7 +22,7 @@ import windowsReport
 from windowsReport import load_key_vars_windows
 
 MAX_FOLDERS = 6
-
+REQUIRED_MARKERS = {"windows": "00_Analysis.txt", "linux": "summary.csv"}
 
 def get_base_dir():
     """Always write output next to the .exe or script, not in a temp folder."""
@@ -37,12 +39,49 @@ def slugify(value):
 
 
 def detect_os_type(folder):
-    files_in_folder = os.listdir(folder)
-    if "00_Analysis.txt" in files_in_folder:
+    try:
+        files_in_folder = os.listdir(folder)
+    except OSError:
+        return None
+
+    # Exact filename markers must be present directly in the folder
+    if REQUIRED_MARKERS["windows"] in files_in_folder:
         return "windows"
-    if "summary.csv" in files_in_folder:
+    if REQUIRED_MARKERS["linux"] in files_in_folder:
         return "linux"
     return None
+
+
+def validate_folder(folder):
+    """Validate a candidate host output folder.
+
+    Returns (is_valid: bool, reason: str, os_type: str|None).
+    """
+    if not folder:
+        return False, "No folder selected.", None
+    if not os.path.isabs(folder):
+        folder = os.path.abspath(folder)
+    if not os.path.exists(folder):
+        return False, "Path does not exist.", None
+    if not os.path.isdir(folder):
+        return False, "Path is not a directory.", None
+
+    try:
+        entries = os.listdir(folder)
+    except OSError as e:
+        return False, f"Unable to read folder: {e}", None
+
+    # ensure marker files are directly in this folder (not nested)
+    if REQUIRED_MARKERS["windows"] in entries:
+        return True, "Contains Windows output files.", "windows"
+    if REQUIRED_MARKERS["linux"] in entries:
+        return True, "Contains Linux output files.", "linux"
+
+    return (
+        False,
+        f"Required script output files not found directly in folder (looking for {REQUIRED_MARKERS}).",
+        None,
+    )
 
 
 # if the marker files change, this is the place to update
@@ -58,14 +97,37 @@ def run_pipeline(sample_folders, progress_callback=None):
     os.makedirs(output_json, exist_ok=True)
     os.makedirs(reports_dir, exist_ok=True)
 
+    # sanitize and enforce limits
+    if not isinstance(sample_folders, (list, tuple)):
+        raise TypeError("sample_folders must be a list of folder paths")
+
+    # convert to absolute, preserve order, remove duplicates
+    seen = set()
+    sanitized = []
+    for f in sample_folders:
+        ab = os.path.abspath(f)
+        if ab in seen:
+            continue
+        seen.add(ab)
+        sanitized.append(ab)
+
+    if len(sanitized) > MAX_FOLDERS:
+        raise ValueError(f"At most {MAX_FOLDERS} folders are allowed")
+
     site_reports = []
     hosts_meta = []
 
-    for i, folder in enumerate(sample_folders):
+    for i, folder in enumerate(sanitized):
         if progress_callback:
             progress_callback(f"Detecting OS for: {os.path.basename(folder)}...")
 
-        os_type = detect_os_type(folder)
+        valid, reason, os_type = validate_folder(folder)
+        if not valid:
+            if progress_callback:
+                progress_callback(
+                    f"WARNING: Skipping '{os.path.basename(folder)}' — {reason}"
+                )
+            continue
 
         if os_type is None:
             if progress_callback:
@@ -82,7 +144,12 @@ def run_pipeline(sample_folders, progress_callback=None):
                 progress_callback(f"Parsing Windows data: {folder_name}...")
 
             # parse the Windows evidence files and save a temp normalized JSON output
-            data = build_windows_output(folder, temp_json_path)
+            try:
+                data = build_windows_output(folder, temp_json_path)
+            except Exception as e:
+                if progress_callback:
+                    progress_callback(f"ERROR parsing Windows folder {folder_name}: {e}")
+                continue
             key_vars = load_key_vars_windows(data)
             hostname = data.get("systeminfo", {}).get("Host Name") or "Unknown Host"
             slug = slugify(hostname)
@@ -95,7 +162,12 @@ def run_pipeline(sample_folders, progress_callback=None):
                 progress_callback(f"Parsing Linux data: {folder_name}...")
 
             # parse the Linux evidence files and save a temp normalized JSON output
-            data = build_linux_output(folder, temp_json_path)
+            try:
+                data = build_linux_output(folder, temp_json_path)
+            except Exception as e:
+                if progress_callback:
+                    progress_callback(f"ERROR parsing Linux folder {folder_name}: {e}")
+                continue
             key_vars = load_key_vars_linux(data)
             hostname = (
                 data.get("summary", {}).get("Host")
@@ -162,24 +234,25 @@ def run_pipeline(sample_folders, progress_callback=None):
         site_reports, output_path=index_path, report_session=shared_report_session
     )
 
-    # return the generated homepage path and metadata for each report
-    return index_path, site_reports
+    # return the generated homepage path, site report results, and host metadata
+    return index_path, site_reports, hosts_meta
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Zip Audit - Report Builder")
+        self.title("Script Output Report Builder")
         self.resizable(False, False)
         self.geometry("600x480")
         self.folders = []
+        self.last_build = None
         self._build_ui()
 
     def _build_ui(self):
         pad = {"padx": 12, "pady": 6}
 
         tk.Label(
-            self, text="Zip Audit Report Builder", font=("Arial", 14, "bold")
+            self, text="Script Output Report Builder", font=("Arial", 14, "bold")
         ).pack(**pad, anchor="w")
 
         tk.Label(
@@ -249,6 +322,39 @@ class App(tk.Tk):
             height=2,
         ).pack(padx=12, pady=8, fill="x")
 
+        # Save report button and note
+        save_frame = tk.Frame(self)
+        save_frame.pack(padx=12, pady=(0, 8), fill="x")
+
+        self.save_button = tk.Button(
+            save_frame,
+            text="Save Current Report",
+            command=self._save_report,
+            width=18,
+        )
+        self.save_button.pack(side="left")
+        self.save_button.config(state=tk.DISABLED)
+
+        self.open_prev_button = tk.Button(
+            save_frame,
+            text="Open Previous Report",
+            command=self._open_previous_report,
+            width=18,
+        )
+        self.open_prev_button.pack(side="left", padx=(8, 0))
+
+        # disable if no saved_reports directory exists
+        saved_root = os.path.join(get_base_dir(), "saved_reports")
+        if not os.path.isdir(saved_root) or not os.listdir(saved_root):
+            self.open_prev_button.config(state=tk.DISABLED)
+
+        tk.Label(
+            save_frame,
+            text="(Click to save; re-save after any manual edits)",
+            fg="#666",
+            font=("Arial", 9),
+        ).pack(side="left", padx=(8, 0))
+
     def _add_folder(self):
         if len(self.folders) >= MAX_FOLDERS:
             messagebox.showwarning(
@@ -257,6 +363,20 @@ class App(tk.Tk):
             return
 
         path = filedialog.askdirectory(title="Select host output folder")
+        if not path:
+            return
+
+        valid, reason, os_type = validate_folder(path)
+        if not valid:
+            messagebox.showerror(
+                "Invalid Folder",
+                (
+                    f"The selected folder does not appear to contain the required script output files:\n\n{reason}\n\n"
+                    "Each host folder must contain the script output files directly inside it."
+                ),
+            )
+            return
+
         if path and path not in self.folders:
             self.folders.append(path)
             self.folder_listbox.insert(tk.END, path)
@@ -273,25 +393,76 @@ class App(tk.Tk):
             messagebox.showwarning("No Folders", "Please add at least one folder.")
             return
 
+        # If there's an unsaved previous build, ask whether to save it
+        if self.last_build and not self.last_build.get("saved", False):
+            if messagebox.askyesno(
+                "Save previous report?",
+                "You have a previous report that has not been saved.\n\nSave it now?",
+            ):
+                self._save_report()
+
+        # validate all selected folders before starting
+        invalid = []
+        for f in self.folders:
+            valid, reason, _ = validate_folder(f)
+            if not valid:
+                invalid.append((f, reason))
+
+        if invalid:
+            msg_lines = [f"{os.path.basename(p)}: {r}" for p, r in invalid]
+            messagebox.showerror(
+                "Invalid Folders",
+                "The following selected folders are invalid or missing required files:\n\n"
+                + "\n".join(msg_lines),
+            )
+            return
+
+        # remind the user not to edit generated artifacts
+        if not messagebox.askyesno(
+            "Confirm",
+            (
+                "The tool will generate HTML and JSON files next to the application.\n\n"
+                "Do not edit any generated files (index.html, the reports folder, or output_json).\n\n"
+                "Continue?"
+            ),
+        ):
+            return
+
+        # warn that building will overwrite any existing unsaved generated files
+        if not messagebox.askyesno(
+            "Overwrite Warning",
+            "This will overwrite any unsaved generated reports in the application folders. Continue?",
+        ):
+            return
+
         # start the progress indicator before the long-running build
         self.progress.start(10)
         self.status_var.set("Starting...")
         self.update()
 
         try:
-            index_path, site_reports = run_pipeline(
+            index_path, site_reports, hosts_meta = run_pipeline(
                 self.folders, progress_callback=self._update_status
             )
 
             self.progress.stop()
-            names = ", ".join(s["hostname"] for s in site_reports)
+            names = ", ".join(m["hostname"] for m in hosts_meta)
             self.status_var.set(f"Done. Built: {names}")
 
             if messagebox.askyesno(
                 "Complete",
-                f"Reports built for {len(site_reports)} host(s).\n\nOpen the homepage now?",
+                f"Reports built for {len(hosts_meta)} host(s).\n\nOpen the homepage now?",
             ):
                 webbrowser.open(f"file:///{index_path.replace(os.sep, '/')}")
+
+            # store metadata about this build so the user can save it
+            self.last_build = {
+                "index_path": index_path,
+                "site_reports": site_reports,
+                "hosts_meta": hosts_meta,
+                "saved": False,
+            }
+            self.save_button.config(state=tk.NORMAL)
 
         except Exception as e:
             # stop the spinner and show the error state in the UI
@@ -303,6 +474,135 @@ class App(tk.Tk):
         # update the status label with messages from run_pipeline
         self.status_var.set(message)
         self.update()
+
+    def _save_report(self):
+        if not self.last_build:
+            messagebox.showwarning("No Report", "There is no built report to save.")
+            return
+
+        name = simpledialog.askstring("Save Report", "Enter a name for this saved report:")
+        if not name:
+            return
+
+        base_dir = get_base_dir()
+        saved_root = os.path.join(base_dir, "saved_reports")
+        os.makedirs(saved_root, exist_ok=True)
+
+        folder_name = slugify(name)
+        target_dir = os.path.join(saved_root, folder_name)
+
+        if os.path.exists(target_dir):
+            if not messagebox.askyesno(
+                "Overwrite?",
+                f"A saved report named '{folder_name}' already exists. Overwrite?",
+            ):
+                return
+            shutil.rmtree(target_dir)
+
+        os.makedirs(target_dir, exist_ok=True)
+
+        # copy index and related report/json files into the saved folder
+        index_src = self.last_build.get("index_path")
+        # read and rewrite index to remove absolute paths pointing to base_dir
+        try:
+            with open(index_src, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # replace absolute occurrences of base_dir with relative paths
+            norm_base = os.path.normpath(base_dir)
+            content = content.replace(norm_base + os.sep, "")
+            content = content.replace(norm_base.replace("\\", "/") + "/", "")
+            content = content.replace(f"file:///{norm_base.replace('\\', '/')}/", "")
+
+            index_target = os.path.join(target_dir, "index.html")
+            with open(index_target, "w", encoding="utf-8") as f:
+                f.write(content)
+        except Exception as e:
+            messagebox.showerror("Save Failed", f"Could not copy index.html: {e}")
+            return
+
+        # create subfolders for reports and output_json
+        reports_out = os.path.join(target_dir, "reports")
+        output_json_out = os.path.join(target_dir, "output_json")
+        os.makedirs(reports_out, exist_ok=True)
+        os.makedirs(output_json_out, exist_ok=True)
+
+        # copy per-host files
+        hosts = self.last_build.get("hosts_meta", [])
+        skipped = []
+        for meta in hosts:
+            rpt = meta.get("report_path")
+            jpath = meta.get("json_path")
+
+            if rpt and os.path.exists(rpt):
+                try:
+                    shutil.copy2(rpt, os.path.join(reports_out, os.path.basename(rpt)))
+                except Exception:
+                    skipped.append(rpt)
+
+            if jpath and os.path.exists(jpath):
+                try:
+                    shutil.copy2(jpath, os.path.join(output_json_out, os.path.basename(jpath)))
+                except Exception:
+                    skipped.append(jpath)
+
+        self.last_build["saved"] = True
+        self.save_button.config(state=tk.DISABLED)
+
+        # also look for any review/exported state files that may contain user-edits (localStorage exports)
+        base_reports_dir = os.path.join(base_dir, "reports")
+        base_output_json = os.path.join(base_dir, "output_json")
+
+        def copy_reviews(src_dir, dst_dir):
+            if not os.path.isdir(src_dir):
+                return []
+            copied = []
+            for fn in os.listdir(src_dir):
+                if "review" in fn.lower() and fn.lower().endswith(".json"):
+                    src = os.path.join(src_dir, fn)
+                    try:
+                        shutil.copy2(src, os.path.join(dst_dir, fn))
+                        copied.append(src)
+                    except Exception:
+                        skipped.append(src)
+            return copied
+
+        copied_reviews = []
+        copied_reviews += copy_reviews(base_reports_dir, reports_out)
+        copied_reviews += copy_reviews(base_output_json, output_json_out)
+
+        # enable Open Previous Report button now that there's saved content
+        saved_root = os.path.join(base_dir, "saved_reports")
+        try:
+            self.open_prev_button.config(state=tk.NORMAL)
+        except Exception:
+            pass
+
+        if skipped:
+            messagebox.showwarning(
+                "Saved With Warnings",
+                f"Saved to {target_dir}, but some files could not be copied:\n\n" + "\n".join(skipped),
+            )
+        else:
+            messagebox.showinfo("Saved", f"Report saved to: {target_dir}")
+
+    def _open_previous_report(self):
+        base_dir = get_base_dir()
+        saved_root = os.path.join(base_dir, "saved_reports")
+        if not os.path.isdir(saved_root):
+            messagebox.showwarning("No Saved Reports", "No saved_reports folder exists.")
+            return
+
+        folder = filedialog.askdirectory(title="Select saved report folder", initialdir=saved_root)
+        if not folder:
+            return
+
+        index_path = os.path.join(folder, "index.html")
+        if not os.path.exists(index_path):
+            messagebox.showerror("Missing Index", "Selected folder does not contain index.html")
+            return
+
+        webbrowser.open(f"file:///{index_path.replace(os.sep, '/')}" )
 
 
 if __name__ == "__main__":

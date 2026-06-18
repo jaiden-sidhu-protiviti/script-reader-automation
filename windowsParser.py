@@ -24,26 +24,52 @@ def parse_running_services(file_path):
         reader = csv.DictReader(f)
 
         for row in reader:
-            service_name = row.get("Name") or row.get("ServiceName")
+            # Normalize common name fields
+            service_name = row.get("Name") or row.get("ServiceName") or row.get("ProcessName") or row.get("Process") or row.get("Image")
+            display_name = row.get("DisplayName") or row.get("Description") or row.get("Product") or ""
 
-            display_name = row.get("DisplayName", "")
+            # There are multiple ways CSVs indicate running state. Check several columns/indicators:
+            # - Status column (e.g., "Running", "Stopped")
+            # - HasExited or ExitCode (PowerShell Get-Process) -> HasExited=False means running
+            # - Presence of Id/PID (non-empty usually indicates running)
+            # - A 'State' or 'ServiceStatus' column
+            status_value = (row.get("Status") or row.get("State") or row.get("ServiceStatus") or "").strip().lower()
+            has_exited = str(row.get("HasExited") or row.get("Exited") or "").strip().lower()
+            exit_code = str(row.get("ExitCode") or row.get("Exit_Code") or row.get("Exit code") or "").strip().lower()
+            id_val = str(row.get("Id") or row.get("PID") or row.get("ProcessId") or row.get("Process Id") or "").strip()
 
-            status_value = (row.get("Status") or "").strip().lower()
+            # Determine running/stopped
+            is_running = False
 
-            if status_value == "running":
-                status = "running"
-                active = "active"
-            else:
-                status = "stopped"
-                active = "inactive"
+            if status_value:
+                if "run" in status_value or status_value in ("running", "started", "active"):
+                    is_running = True
+                elif status_value in ("stopped", "not running", "inactive"):
+                    is_running = False
+
+            # PowerShell's Get-Process outputs HasExited = False for running processes
+            if not is_running and has_exited:
+                if has_exited in ("false", "0"):
+                    is_running = True
+                elif has_exited in ("true", "1"):
+                    is_running = False
+
+            # If no explicit status, presence of a numeric PID/Id usually indicates running
+            if not is_running and not status_value and id_val:
+                if id_val.isdigit() and int(id_val) > 0:
+                    is_running = True
+
+            status = "running" if is_running else "stopped"
+            active = "active" if is_running else "inactive"
 
             services.append(
                 {
                     "service": service_name,
-                    "load": "loaded",
+                    "load": row.get("Load") or "loaded",
                     "active": active,
                     "status": status,
                     "description": display_name,
+                    "raw_row": row,
                 }
             )
 
@@ -642,38 +668,42 @@ def parse_local_users(file_path):
     for line in lines:
         line = line.strip()
 
-        # Skip metadata
+        # Skip empty / metadata
         if not line or line.startswith("***"):
             continue
 
-        # Detect header separator row
         if line.startswith("----"):
             data_started = True
             continue
 
-        if not data_started:
+        if data_started:
+            parts = line.split()
+
+            if len(parts) >= 3:
+                caption = parts[1]
+
+                if "\\" in caption:
+                    username = caption.split("\\")[-1]
+                else:
+                    username = caption
+
+                users.append({
+                    "username": username,
+                    "status": "enabled",
+                })
             continue
 
-        # Split by whitespace
-        parts = line.split()
+        # Example:
+        # \\HOST\root\cimv2:Win32_UserAccount.Domain="HOST",Name="DefaultAccount"
+        if "Win32_UserAccount" in line and "Name=" in line:
+            match = re.search(r'Name="([^"]+)"', line)
+            if match:
+                username = match.group(1)
 
-        if len(parts) < 3:
-            continue
-
-        # Extract from columns
-        caption = parts[1]  # contains DOMAIN\username
-
-        if "\\" in caption:
-            username = caption.split("\\")[-1]
-        else:
-            username = caption
-
-        users.append(
-            {
-                "username": username,
-                "status": "enabled",
-            }
-        )
+                users.append({
+                    "username": username,
+                    "status": "enabled",
+                })
 
     return {"local_users": users}
 

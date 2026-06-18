@@ -23,7 +23,7 @@ def slugify(value):
 def detect_os_type(folder):
     files_in_folder = os.listdir(folder)
 
-    if "00_Analysis.txt" in files_in_folder:
+    if "00_Analysis.txt" in files_in_folder or "00_AllOutputs.txt" in files_in_folder:
         return "windows"
 
     if "summary.csv" in files_in_folder:
@@ -36,7 +36,7 @@ def detect_os_type(folder):
 def main():
     # This is a simple headless runner for automation or quick local testing.
     # Update sample_folders to match the folders you want to process.
-    sample_folders = ["sampleWindows1", "sampleWindows2", "sampleWindows3", "sampleWindows4"]
+    sample_folders = ["sampleEndpoint1"]
 
     site_reports = []
     hosts_meta = []
