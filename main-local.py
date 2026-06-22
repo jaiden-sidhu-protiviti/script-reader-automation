@@ -4,7 +4,6 @@
 
 import os
 import re
-import json
 
 from linuxParser import build_linux_output
 from windowsParser import build_windows_output

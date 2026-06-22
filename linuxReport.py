@@ -4,17 +4,24 @@
 # loading, rule evaluation, and homepage rendering.
 
 import html
-from importlib.metadata import files
 import json
 import os
 import sys
 import uuid
-from linuxParser import build_linux_output
 
 report_session = str(uuid.uuid4())
 
 TRUNCATION_MARKER = "__TRUNCATED__"
 MAX_LINES = 300
+
+
+def as_dict(x):
+    return x if isinstance(x, dict) else {}
+
+
+def join_items(seq):
+    """Safely join items coercing to strings and skipping empty/None values."""
+    return ", ".join([s for s in (str(x).strip() if x is not None else "" for x in seq) if s])
 
 
 def load_sample_files(folder="sampleWindows"):
@@ -91,16 +98,14 @@ def load_key_vars_linux(data):
 
     return {
         "Key Variables": {
-            "Max Password Age": safe(lambda: data.get("pw_ages")[0].get("pw_max_age")),
-            "Min Password Length": safe(lambda: data.get("pwquality").get("minlen")),
+            "Max Password Age": safe(lambda: as_dict(next(iter(data.get("pw_ages") or []), {})).get("pw_max_age")),
+            "Min Password Length": safe(lambda: as_dict(data.get("pwquality")).get("minlen")),
             "Password Complexity": calc_complexity(),
-            "Password History": safe(lambda: data.get("summary").get("PwHistory")),
-            "Bad Lockout Count": safe(lambda: data.get("login_attempts").get("deny")),
-            "Lockout Duration": safe(
-                lambda: data.get("login_attempts").get("unlock_time")
-            ),
-            "Time Source IP": safe(lambda: data.get("timesources")[0]),
-            "SSH Logging": safe(lambda: data.get("sshd_config").get("LogLevel")),
+            "Password History": safe(lambda: as_dict(data.get("summary")).get("PwHistory")),
+            "Bad Lockout Count": safe(lambda: as_dict(data.get("login_attempts")).get("deny")),
+            "Lockout Duration": safe(lambda: as_dict(data.get("login_attempts")).get("unlock_time")),
+            "Time Source IP": safe(lambda: next(iter(data.get("timesources") or []), "")),
+            "SSH Logging": safe(lambda: as_dict(data.get("sshd_config")).get("LogLevel")),
         }
     }
 
@@ -221,12 +226,13 @@ def render_html(
             return ""
 
         def render_section(title, values):
-            rows = ""
-            for k, v in values.items():
-                val = html.escape(str(v)) if v is not None else "<em>Not Set</em>"
-                rows += (
-                    f"<tr><td><strong>{html.escape(k)}</strong></td><td>{val}</td></tr>"
+            rows = """
+                f"Interactive accounts observed = {join_items(u.get('username') for u in passwd_list if u.get('interactive'))}",
+                    f"Enabled interactive accounts observed: {join_items(u.get('username') for u in enabled_users)}"
+                    f"Potential shared/generic/functional accounts detected: {join_items(suspect_accounts)}"
+                    f"Interactive accounts = {join_items(u.get('username') for u in passwd_list if u.get('interactive'))}",
                 )
+            """
             return f"""
             <div class='kv-card'>
                 <h3>{html.escape(title)}</h3>
@@ -256,12 +262,8 @@ def render_html(
 
         f.write("<style>\n")
         f.write("    body { font-family: Arial, sans-serif; margin: 24px; }\n")
-        f.write(
-            "    table { width: 100%; border-collapse: collapse; table-layout: fixed; }\n"
-        )
-        f.write(
-            "    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: top; word-wrap: break-word; word-break: break-word; }\n"
-        )
+        f.write("    table { width: 100%; border-collapse: collapse; table-layout: fixed; }\n")
+        f.write("    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: top; word-wrap: break-word; word-break: break-word; }\n")
         f.write("    th { background: #333; color: #fff; }\n")
         f.write("    th:nth-child(1) { width: 6%; }\n")
         f.write("    th:nth-child(2) { width: 18%; }\n")
@@ -276,100 +278,35 @@ def render_html(
         f.write("    tr.manual { background: #eef0f5; }\n")
         f.write("    tr.unknown { background: #f0f0f0; }\n")
         f.write("    .finding-item { margin-bottom: 0.9em; display: block; }\n")
-        f.write(
-            "    .finding-label { font-family: Arial, sans-serif; margin-bottom: 0.2em; display: block; }\n"
-        )
-        f.write(
-            "    .finding-snippet { margin: 0.25em 0 0; font-family: 'Courier New', Courier, monospace; background: #f7f7f7; padding: 6px; border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }\n"
-        )
-        f.write(
-            "    .finding-file { font-size: 0.9em; color: #444; margin-top: 0.25em; }\n"
-        )
-        f.write(
-            "    #reviewModal { display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); }\n"
-        )
-        f.write(
-            "    #reviewModal .box { background: #fff; margin: 40px auto; padding: 12px; width: 80%; max-width: 900px; border-radius: 6px; }\n"
-        )
-        f.write(
-            "    #reviewModal textarea { width: 100%; height: 240px; font-family: monospace; }\n"
-        )
-        f.write(
-            "    .review-btn { padding: 6px 12px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }\n"
-        )
+        f.write("    .finding-label { font-family: Arial, sans-serif; margin-bottom: 0.2em; display: block; }\n")
+        f.write("    .finding-snippet { margin: 0.25em 0 0; font-family: 'Courier New', Courier, monospace; background: #f7f7f7; padding: 6px; border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }\n")
+        f.write("    .finding-file { font-size: 0.9em; color: #444; margin-top: 0.25em; }\n")
+        f.write("    #reviewModal { display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); }\n")
+        f.write("    #reviewModal .box { background: #fff; margin: 40px auto; padding: 12px; width: 80%; max-width: 900px; border-radius: 6px; }\n")
+        f.write("    #reviewModal textarea { width: 100%; height: 240px; font-family: monospace; }\n")
+        f.write("    .review-btn { padding: 6px 12px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }\n")
         f.write("    .review-btn:hover { background: #0052a3; }\n")
-        f.write(
-            "    .top-toolbar { margin: 16px 0; display: flex; justify-content: flex-start; gap: 12px; }\n"
-        )
-        f.write(
-            "    .export-btn { padding: 10px 16px; background: #198754; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }\n"
-        )
+        f.write("    .top-toolbar { margin: 16px 0; display: flex; justify-content: flex-start; gap: 12px; }\n")
+        f.write("    .export-btn { padding: 10px 16px; background: #198754; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }\n")
         f.write("    .export-btn:hover { background: #157347; }\n")
         f.write("    .qsa-response-text { font-size: 0.82em; color: #333; }\n")
-        f.write("""
-            .kv-container {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                gap: 16px;
-                margin-bottom: 24px;
-            }
-
-            .kv-card {
-                border: 1px solid #ddd;
-                border-radius: 8px;
-                padding: 12px;
-                background: #fafafa;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-            }
-
-            .kv-card h3 {
-                margin-top: 0;
-                margin-bottom: 8px;
-                font-size: 1.05em;
-                color: #333;
-            }
-
-            .kv-table {
-                width: 100%;
-                border-collapse: collapse;
-                font-size: 0.85em;
-            }
-
-            .kv-table td {
-                border: none;
-                padding: 4px 6px;
-                vertical-align: top;
-            }
-
-            .kv-table td:first-child {
-                color: #555;
-                width: 55%;
-            }
-            """)
-        f.write(
-            "    /* Floating circular navigation buttons (bottom-right) */\n"
-        )
-        f.write(
-            "    .floating-nav { position: fixed; right: 18px; bottom: 18px; display: flex; gap: 10px; align-items: center; z-index: 9999; }\n"
-        )
-        f.write(
-            "    .nav-btn { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: #007bff; color: #fff; text-decoration: none; font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.18); transition: transform 0.12s ease, background 0.12s ease; }\n"
-        )
-        f.write(
-            "    .nav-btn:hover { transform: translateY(-3px); background: #0056b3; }\n"
-        )
-        f.write(
-            "    .nav-btn.nav-disabled { background: #dcdcdc; color: #888; cursor: default; pointer-events: none; box-shadow: none; }\n"
-        )
+        f.write(""".kv-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px; }
+            .kv-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fafafa; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+            .kv-card h3 { margin-top: 0; margin-bottom: 8px; font-size: 1.05em; color: #333; }
+            .kv-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+            .kv-table td { border: none; padding: 4px 6px; vertical-align: top; }
+            .kv-table td:first-child { color: #555; width: 55%;}""")
+        f.write("    .floating-nav { position: fixed; right: 18px; bottom: 18px; display: flex; gap: 10px; align-items: center; z-index: 9999; }\n")
+        f.write("    .nav-btn { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: #007bff; color: #fff; text-decoration: none; font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.18); transition: transform 0.12s ease, background 0.12s ease; }\n")
+        f.write("    .nav-btn:hover { transform: translateY(-3px); background: #0056b3; }\n")
+        f.write("    .nav-btn.nav-disabled { background: #dcdcdc; color: #888; cursor: default; pointer-events: none; box-shadow: none; }\n")
         f.write("</style>\n")
 
-        f.write(
-            "<table id='requirementsTable'><thead><tr><th>ID</th><th>Description</th><th>Status</th><th>Files</th><th>Findings</th><th>Look For</th><th>QSA Response</th></tr></thead><tbody>\n"
-        )
+        f.write("<table id='requirementsTable'><thead><tr><th>ID</th><th>Description</th><th>Status</th><th>Files</th><th>Findings</th><th>Look For</th><th>QSA Response</th></tr></thead><tbody>\n")
         for r in rows:
             f.write(r + "\n")
         f.write("</tbody></table>\n")
-        f.write(f"<script>\n")
+        f.write("<script>\n")
         f.write(f"    const REPORT_EVIDENCE = {evidence_json};\n")
 
         f.write("    function escapeHtml(text) {\n")
@@ -403,38 +340,24 @@ def render_html(
 
         f.write("    function getFindingsText(row) {\n")
         f.write("        const findingsCell = row.children[4].cloneNode(true);\n")
-        f.write(
-            "        findingsCell.querySelectorAll('button').forEach(btn => btn.remove());\n"
-        )
-        f.write(
-            "        return findingsCell.innerText.replace(/\\n{3,}/g, '\\n\\n').trim();\n"
-        )
+        f.write("        findingsCell.querySelectorAll('button').forEach(btn => btn.remove());\n")
+        f.write("        return findingsCell.innerText.replace(/\\n{3,}/g, '\\n\\n').trim();\n")
         f.write("    }\n")
 
         f.write("  function doExportXlsx() {\n")
         f.write("    const selected = Array.from(\n")
-        f.write(
-            "      document.querySelectorAll('#exportHostList input[type=checkbox]')\n"
-        )
+        f.write("      document.querySelectorAll('#exportHostList input[type=checkbox]')\n")
         f.write("    ).filter(cb => cb.checked).map(cb => parseInt(cb.dataset.idx));\n")
-        f.write(
-            "    if (selected.length === 0) { alert('Please select at least one host.'); return; }\n"
-        )
+        f.write("    if (selected.length === 0) { alert('Please select at least one host.'); return; }\n")
         f.write("    const wb = XLSX.utils.book_new();\n")
-        f.write(
-            "    const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','Editor Notes'];\n"
-        )
+        f.write("    const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','Editor Notes'];\n")
         f.write("    selected.forEach(idx => {\n")
         f.write("      const host = EXPORT_DATA[idx];\n")
         f.write("      const sheetData = [headers];\n")
         f.write("      host.rows.forEach(row => {\n")
         # Build the same localStorage key the report page uses
-        f.write(
-            "        const reqKey   = 'req_' + row.id.replace(/[^a-zA-Z0-9]/g, '_');\n"
-        )
-        f.write(
-            "        const storeKey = 'zipaudit|' + host.hostname + '|' + reqKey;\n"
-        )
+        f.write("        const reqKey   = 'req_' + row.id.replace(/[^a-zA-Z0-9]/g, '_');\n")
+        f.write("        const storeKey = 'zipaudit|' + host.hostname + '|' + reqKey;\n")
         f.write("        const raw      = localStorage.getItem(storeKey);\n")
         f.write("        let   status   = row.status;\n")
         f.write("        let   noteStr  = '';\n")
@@ -444,28 +367,18 @@ def render_html(
         f.write("            status = saved.status || status;\n")
         f.write("            if (Array.isArray(saved.notes) && saved.notes.length) {\n")
         f.write("              noteStr = saved.notes\n")
-        f.write(
-            "                .map(n => n.timestamp + ' | moved to ' + n.status + ' | ' + n.note)\n"
-        )
+        f.write("                .map(n => n.timestamp + ' | moved to ' + n.status + ' | ' + n.note)\n")
         f.write("                .join('\\n\\n');\n")
         f.write("            }\n")
         f.write("          } catch(e) {}\n")
         f.write("        }\n")
         # Only include QSA response if the current (possibly overridden) status is passed
-        f.write(
-            "        const qsaText = status === 'passed' ? row.qsa_response : '';\n"
-        )
-        f.write(
-            "        sheetData.push([row.id, row.description, status, row.files, row.findings, row.look_for, qsaText, noteStr]);\n"
-        )
+        f.write("        const qsaText = status === 'passed' ? row.qsa_response : '';\n")
+        f.write("        sheetData.push([row.id, row.description, status, row.files, row.findings, row.look_for, qsaText, noteStr]);\n")
         f.write("      });\n")
         f.write("      const ws = XLSX.utils.aoa_to_sheet(sheetData);\n")
-        f.write(
-            "      ws['!cols'] = [{wch:30},{wch:50},{wch:10},{wch:25},{wch:60},{wch:40},{wch:60},{wch:50}];\n"
-        )
-        f.write(
-            "      const sheetName = (host.hostname + ' (' + host.os_label + ')').replace(/[\\\\\\/?*\\[\\]]/g, '').substring(0, 31);\n"
-        )
+        f.write("      ws['!cols'] = [{wch:30},{wch:50},{wch:10},{wch:25},{wch:60},{wch:40},{wch:60},{wch:50}];\n")
+        f.write("      const sheetName = (host.hostname + ' (' + host.os_label + ')').replace(/[\\\\\\/?*\\[\\]]/g, '').substring(0, 31);\n")
         f.write("      XLSX.utils.book_append_sheet(wb, ws, sheetName);\n")
         f.write("    });\n")
         f.write("    const ts = new Date().toISOString().replace(/[:.]/g, '-');\n")
@@ -480,15 +393,11 @@ def render_html(
         f.write("        const previous = localStorage.getItem(BUILD_RESET_MARKER);\n")
         f.write("        if (previous !== REPORT_SESSION) {\n")
         f.write("            Object.keys(localStorage).forEach(k => {\n")
-        f.write(
-            "                if (k.startsWith('zipaudit|') && k !== BUILD_RESET_MARKER) {\n"
-        )
+        f.write("                if (k.startsWith('zipaudit|') && k !== BUILD_RESET_MARKER) {\n")
         f.write("                    localStorage.removeItem(k);\n")
         f.write("                }\n")
         f.write("            });\n")
-        f.write(
-            "            localStorage.setItem(BUILD_RESET_MARKER, REPORT_SESSION);\n"
-        )
+        f.write("            localStorage.setItem(BUILD_RESET_MARKER, REPORT_SESSION);\n")
         f.write("        }\n")
         f.write("    })();\n")
         f.write("\n")
@@ -500,19 +409,13 @@ def render_html(
 
         f.write("    function saveRowState(row, status, notes) {\n")
         f.write("        const key = storageKey(row.id);\n")
-        f.write(
-            "        localStorage.setItem(key, JSON.stringify({status: status, notes: notes}));\n"
-        )
-        f.write(
-            "        window.dispatchEvent(new StorageEvent('storage', { key: key }));\n"
-        )
+        f.write("        localStorage.setItem(key, JSON.stringify({status: status, notes: notes}));\n")
+        f.write("        window.dispatchEvent(new StorageEvent('storage', { key: key }));\n")
         f.write("    }\n")
         f.write("\n")
 
         f.write("    function loadAllRowStates() {\n")
-        f.write(
-            "        const rows = Array.from(document.querySelectorAll('#requirementsTable tbody tr'));\n"
-        )
+        f.write("        const rows = Array.from(document.querySelectorAll('#requirementsTable tbody tr'));\n")
         f.write("        rows.forEach((row, idx) => {\n")
         f.write("            const raw = localStorage.getItem(storageKey(row.id));\n")
         f.write("            if (!raw) return;\n")
@@ -521,35 +424,21 @@ def render_html(
         f.write("                row.className = saved.status;\n")
         f.write("                row.children[2].innerText = saved.status;\n")
         f.write("                syncQsaResponse(row, idx, saved.status);\n")
-        f.write(
-            "                row.querySelectorAll('.editor-note').forEach(e => e.remove());\n"
-        )
+        f.write("                row.querySelectorAll('.editor-note').forEach(e => e.remove());\n")
         f.write("                if (Array.isArray(saved.notes)) {\n")
         f.write("                    setEditorNotes(row, saved.notes);\n")
         f.write("                    saved.notes.forEach(n => {\n")
         f.write("                        const cell    = row.children[4];\n")
-        f.write(
-            "                        const wrapper = document.createElement('div');\n"
-        )
-        f.write(
-            "                        wrapper.className = 'finding-item editor-note';\n"
-        )
-        f.write(
-            "                        const label = document.createElement('div');\n"
-        )
+        f.write("                        const wrapper = document.createElement('div');\n")
+        f.write("                        wrapper.className = 'finding-item editor-note';\n")
+        f.write("                        const label = document.createElement('div');\n")
         f.write("                        label.className = 'finding-label';\n")
-        f.write(
-            "                        label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(n.timestamp) + ', moved to ' + escapeHtml(n.status) + '):</b>';\n"
-        )
+        f.write("                        label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(n.timestamp) + ', moved to ' + escapeHtml(n.status) + '):</b>';\n")
         f.write("                        const body = document.createElement('div');\n")
-        f.write(
-            "                        body.innerHTML = escapeHtml(n.note).replace(/\\n/g, '<br>');\n"
-        )
+        f.write("                        body.innerHTML = escapeHtml(n.note).replace(/\\n/g, '<br>');\n")
         f.write("                        wrapper.appendChild(label);\n")
         f.write("                        wrapper.appendChild(body);\n")
-        f.write(
-            "                        cell.insertBefore(wrapper, cell.firstChild);\n"
-        )
+        f.write("                        cell.insertBefore(wrapper, cell.firstChild);\n")
         f.write("                    });\n")
         f.write("                }\n")
         f.write("            } catch(e) {}\n")
@@ -557,18 +446,14 @@ def render_html(
         f.write("    }\n")
         f.write("\n")
 
-        f.write(
-            "    document.addEventListener('DOMContentLoaded', loadAllRowStates);\n"
-        )
+        f.write("    document.addEventListener('DOMContentLoaded', loadAllRowStates);\n")
         f.write("\n")
 
         f.write("    function resolveFileContent(raw, filename) {\n")
         f.write("        const marker = '__TRUNCATED__:';\n")
         f.write("        const idx = raw.indexOf(marker);")
         f.write("        if (idx === -1) return raw;\n")
-        f.write(
-            "        const blob = new Blob([raw.substring(0, idx)], { type: 'text/plain' });\n"
-        )
+        f.write("        const blob = new Blob([raw.substring(0, idx)], { type: 'text/plain' });\n")
         f.write("        const url = URL.createObjectURL(blob);\n")
         f.write("        return raw.substring(0, idx)\n")
         f.write("            + '\\n\\n[File truncated at 300 lines]\\n'\n")
@@ -576,29 +461,19 @@ def render_html(
         f.write("    }\n")
 
         f.write("    function displayFileContent(content, filename) {\n")
-        f.write(
-            "        const linkPattern = /\\[DOWNLOAD_LINK:([^:]+):([^\\]]+)\\]/;\n"
-        )
+        f.write("        const linkPattern = /\\[DOWNLOAD_LINK:([^:]+):([^\\]]+)\\]/;\n")
         f.write("        const match = content.match(linkPattern);\n")
         f.write("        const textarea = document.getElementById('fileContent');\n")
-        f.write(
-            "        const existing = document.getElementById('fileDownloadLink');\n"
-        )
+        f.write("        const existing = document.getElementById('fileDownloadLink');\n")
         f.write("        if (existing) existing.remove();\n")
         f.write("        if (match) {\n")
-        f.write(
-            "            textarea.value = content.replace(linkPattern, '').trim();\n"
-        )
+        f.write("            textarea.value = content.replace(linkPattern, '').trim();\n")
         f.write("            const a = document.createElement('a');\n")
         f.write("            a.id = 'fileDownloadLink';\n")
         f.write("            a.href = match[1];\n")
         f.write("            a.download = match[2];\n")
-        f.write(
-            "            a.style.cssText = 'display:inline-block;margin-top:6px;font-size:0.9em;color:#0066cc;';\n"
-        )
-        f.write(
-            "            textarea.parentNode.insertBefore(a, textarea.nextSibling);\n"
-        )
+        f.write("            a.style.cssText = 'display:inline-block;margin-top:6px;font-size:0.9em;color:#0066cc;';\n")
+        f.write("            textarea.parentNode.insertBefore(a, textarea.nextSibling);\n")
         f.write("        } else {\n")
         f.write("            textarea.value = content;\n")
         f.write("        }\n")
@@ -625,19 +500,13 @@ def render_html(
         f.write("            sel.selectedIndex = 0;\n")
         f.write("        }\n")
         f.write("        const raw = files[sel.value] || '';\n")
-        f.write(
-            "        displayFileContent(resolveFileContent(raw, sel.value), sel.value);\n"
-        )
-        f.write(
-            "        document.getElementById('statusSelect').value = document.querySelectorAll('#requirementsTable tbody tr')[idx].children[2].innerText.trim();\n"
-        )
+        f.write("        displayFileContent(resolveFileContent(raw, sel.value), sel.value);\n")
+        f.write("        document.getElementById('statusSelect').value = document.querySelectorAll('#requirementsTable tbody tr')[idx].children[2].innerText.trim();\n")
         f.write("        document.getElementById('editorNote').value = '';\n")
         f.write("    }\n")
 
         f.write("    function closeReview() {\n")
-        f.write(
-            "        document.getElementById('reviewModal').style.display = 'none';\n"
-        )
+        f.write("        document.getElementById('reviewModal').style.display = 'none';\n")
         f.write("    }\n")
 
         f.write("    function syncQsaResponse(row, idx, status) {\n")
@@ -646,26 +515,20 @@ def render_html(
         f.write("        const evidence = REPORT_EVIDENCE[idx] || {};\n")
         f.write("        const response = evidence.qsa_response || '';\n")
         f.write("        if (String(status).toLowerCase() === 'passed') {\n")
-        f.write(
-            "            cell.innerHTML = '<span class=\"qsa-response-text\">' + escapeHtml(response) + '</span>';\n"
-        )
+        f.write("            cell.innerHTML = '<span class=\"qsa-response-text\">' + escapeHtml(response) + '</span>';\n")
         f.write("        } else {\n")
         f.write("            cell.innerHTML = '';\n")
         f.write("        }\n")
         f.write("    }\n")
 
         f.write("    document.addEventListener('click', function(e) {\n")
-        f.write(
-            "        if (e.target && e.target.classList && e.target.classList.contains('review-btn')) {\n"
-        )
+        f.write("        if (e.target && e.target.classList && e.target.classList.contains('review-btn')) {\n")
         f.write("            openReview(parseInt(e.target.dataset.idx));\n")
         f.write("        }\n")
         f.write("    });\n")
 
         f.write("    function onFileChange() {\n")
-        f.write(
-            "        const idx = document.getElementById('reviewModal').dataset.idx;\n"
-        )
+        f.write("        const idx = document.getElementById('reviewModal').dataset.idx;\n")
         f.write("        const f = this.value;\n")
         f.write("        const evidence = REPORT_EVIDENCE[idx] || {};\n")
         f.write("        const files = evidence.files || {};\n")
@@ -675,22 +538,12 @@ def render_html(
 
         f.write("    function saveReview() {\n")
         f.write("        const modal  = document.getElementById('reviewModal');\n")
-        f.write(
-            "        if (!modal) { console.error('Modal element not found'); return; }\n"
-        )
+        f.write("        if (!modal) { console.error('Modal element not found'); return; }\n")
         f.write("        const idx    = parseInt(modal.dataset.idx);\n")
-        f.write(
-            "        const status = document.getElementById('statusSelect').value;\n"
-        )
-        f.write(
-            "        const note   = document.getElementById('editorNote').value.trim();\n"
-        )
-        f.write(
-            "        const row = document.querySelectorAll('#requirementsTable tbody tr')[idx];\n"
-        )
-        f.write(
-            "        if (!row) { console.error('Row element not found at index ' + idx); return; }\n"
-        )
+        f.write("        const status = document.getElementById('statusSelect').value;\n")
+        f.write("        const note   = document.getElementById('editorNote').value.trim();\n")
+        f.write("        const row = document.querySelectorAll('#requirementsTable tbody tr')[idx];\n")
+        f.write("        if (!row) { console.error('Row element not found at index ' + idx); return; }\n")
         f.write("\n")
         f.write("        row.className = status;\n")
         f.write("        row.children[2].innerText = status;\n")
@@ -709,13 +562,9 @@ def render_html(
         f.write("            wrapper.className = 'finding-item editor-note';\n")
         f.write("            const label = document.createElement('div');\n")
         f.write("            label.className = 'finding-label';\n")
-        f.write(
-            "            label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(timestamp) + ', moved to ' + escapeHtml(status) + '):</b>';\n"
-        )
+        f.write("            label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(timestamp) + ', moved to ' + escapeHtml(status) + '):</b>';\n")
         f.write("            const body = document.createElement('div');\n")
-        f.write(
-            "            body.innerHTML = escapeHtml(note).replace(/\\n/g, '<br>');\n"
-        )
+        f.write("            body.innerHTML = escapeHtml(note).replace(/\\n/g, '<br>');\n")
         f.write("            wrapper.appendChild(label);\n")
         f.write("            wrapper.appendChild(body);\n")
         f.write("            cell.insertBefore(wrapper, cell.firstChild);\n")
@@ -727,12 +576,8 @@ def render_html(
         f.write("    }\n")
 
         f.write("  function applyStoredStatuses() {\n")
-        f.write(
-            "    document.querySelectorAll('tbody td[data-host][data-req]').forEach(td => {\n"
-        )
-        f.write(
-            "      const key = 'zipaudit|' + td.dataset.host + '|' + td.dataset.req;\n"
-        )
+        f.write("    document.querySelectorAll('tbody td[data-host][data-req]').forEach(td => {\n")
+        f.write("      const key = 'zipaudit|' + td.dataset.host + '|' + td.dataset.req;\n")
         f.write("      const raw = localStorage.getItem(key);\n")
         f.write("      if (!raw) return;\n")
         f.write("      try {\n")
@@ -743,36 +588,26 @@ def render_html(
         f.write("      } catch(e) {}\n")
         f.write("    });\n")
         f.write("  }\n")
-        f.write(
-            "  document.addEventListener('DOMContentLoaded', applyStoredStatuses);\n"
-        )
+        f.write("  document.addEventListener('DOMContentLoaded', applyStoredStatuses);\n")
         f.write("  window.addEventListener('focus', applyStoredStatuses);\n")
         f.write("  window.addEventListener('storage', applyStoredStatuses);\n")
 
         f.write("</script>\n")
-        f.write(f"<div id='reviewModal'><div class='box'>\n")
-        f.write(f"    <div style='display: flex; gap: 8px; align-items: center;'>\n")
-        f.write(f"        <label>Status:</label>\n")
-        f.write(
-            f"        <select id='statusSelect'><option>passed</option><option>failed</option><option>review</option><option>manual</option><option>unknown</option></select>\n"
-        )
-        f.write(f"        <label style='margin-left: 12px;'>File:</label>\n")
-        f.write(
-            f"        <select id='fileSelect' onchange='onFileChange.call(this)'></select>\n"
-        )
-        f.write(f"    </div>\n")
-        f.write(f"    <textarea id='fileContent' readonly></textarea>\n")
-        f.write(f"    <label>Editor's Note:</label>\n")
-        f.write(f"    <textarea id='editorNote'></textarea>\n")
-        f.write(f"    <div style='margin-top: 12px;'>\n")
-        f.write(
-            f"        <button onclick='saveReview()' style='padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;'>Save</button>\n"
-        )
-        f.write(
-            f"        <button onclick='closeReview()' style='padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 8px;'>Cancel</button>\n"
-        )
-        f.write(f"    </div>\n")
-        f.write(f"</div></div>\n")
+        f.write("<div id='reviewModal'><div class='box'>\n")
+        f.write("    <div style='display: flex; gap: 8px; align-items: center;'>\n")
+        f.write("        <label>Status:</label>\n")
+        f.write("        <select id='statusSelect'><option>passed</option><option>failed</option><option>review</option><option>manual</option><option>unknown</option></select>\n")
+        f.write("        <label style='margin-left: 12px;'>File:</label>\n")
+        f.write("        <select id='fileSelect' onchange='onFileChange.call(this)'></select>\n")
+        f.write("    </div>\n")
+        f.write("    <textarea id='fileContent' readonly></textarea>\n")
+        f.write("    <label>Editor's Note:</label>\n")
+        f.write("    <textarea id='editorNote'></textarea>\n")
+        f.write("    <div style='margin-top: 12px;'>\n")
+        f.write("        <button onclick='saveReview()' style='padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;'>Save</button>\n")
+        f.write("        <button onclick='closeReview()' style='padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 8px;'>Cancel</button>\n")
+        f.write("    </div>\n")
+        f.write("</div></div>\n")
         f.write("</body></html>\n")
 
 
@@ -825,8 +660,6 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         ...
     ]
     """
-    import html
-    import json as _json
 
     all_req_ids = []
     req_desc = {}
@@ -891,8 +724,8 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
             }
         )
 
-    export_data_json = _json.dumps(export_data)
-    total = sum(counts.values()) or 1  # avoid div/0 for progress bars
+    export_data_json = json.dumps(export_data)
+    sum(counts.values()) or 1  # avoid div/0 for progress bars
 
     with open(output_path, "w", encoding="utf-8") as f:
 
@@ -1946,17 +1779,27 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     wheel_members = wheel.get("members") if wheel else []
     sudoers_entries = data.get("sudoers", [])
     sudo_users = []
+
     for s in sudoers_entries:
         if isinstance(s, dict):
             sudo_users.append(s.get("user") or s.get("access") or str(s))
         else:
             sudo_users.append(str(s))
 
+    # Prepare a readable preview of sudoers entries (join list items),
+    # and append a truncation note if there are more than 15 entries.
+    entries_preview = ", ".join(map(str, sudo_users[:15]))
+    truncated_note = (
+        " (List truncated at 15 users. View sudoers.txt for full list.)"
+        if len(sudo_users) > 15
+        else ""
+    )
+
     findings_723b = [
         f"Observed {len(passwd_list)} local accounts.",
         f"UID 0 accounts: {uid0_accounts}",
         f"Wheel group members: {wheel_members}",
-        f"Sudoers entries: {sudo_users}",
+        f"Sudoers entries: {entries_preview}{truncated_note}",
         "Documented approval evidence (tickets/policies) not present in JSON; review required to confirm approvals.",
     ]
 
@@ -2430,10 +2273,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
             return key.strip(), int(val) if val.isdigit() else None
         return None, int(raw) if raw.isdigit() else None
 
-    attempts_raw = data.get("login_attempts").get("deny")
-    timer_raw = data.get("login_attempts").get("unlock_time")
-    edr_raw = data.get("login_attempts").get("even_deny_root")
-    rut_raw = data.get("login_attempts").get("root_unlock_time")
+    attempts_raw = as_dict(data.get("login_attempts")).get("deny")
+    timer_raw = as_dict(data.get("login_attempts")).get("unlock_time")
+    edr_raw = as_dict(data.get("login_attempts")).get("even_deny_root")
+    rut_raw = as_dict(data.get("login_attempts")).get("root_unlock_time")
 
     _, attempts_parsed = parse_kv_int(attempts_raw)
     _, timer_parsed = parse_kv_int(timer_raw)
@@ -2740,7 +2583,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
 
         # optional: always include a quick summary of parsed users
         findings_839.append(
-            f"Parsed password-age records for users: {', '.join(e.get('user', '') for e in pw_ages)}"
+            f"Parsed password-age records for users: {join_items(e.get('user') for e in pw_ages)}"
         )
 
     add(
@@ -2787,7 +2630,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         "[8.6.1]",
         "Provide application and system accounts to confirm all such accounts have unique passwords/passphrases.",
         "review",
-        [f"Interactive accounts observed = {', '.join(interactive_users)}"],
+        [f"Interactive accounts observed = {join_items(interactive_users)}"],
         ["passwd.txt"],
         default_file="passwd.txt",
         look_for="Unique authentication for application and system accounts.",
@@ -2847,7 +2690,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     has_kern = any(t in ("kern", "audit", "debug") for t in log_level_tags)
     log_is_active = log_active == "active"
 
-    attempts_raw = str(data.get("login_attempts").get("deny") or "")
+    attempts_raw = str(as_dict(data.get("login_attempts")).get("deny") or "")
     attempts_configured = attempts_raw.strip().isdigit()
 
     # print(attempts_raw)
@@ -3037,14 +2880,21 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # [10.3.3]
     # -------------------------
     forwarding = logging.get("forwarding_configured")
+    targets = logging.get("forwarding_targets", [])
+    script_result = logging.get("script_result", "unknown")
+
+    # Stronger pass condition: must actually have a target
+    is_valid = bool(forwarding and targets)
+
     add(
         "[10.3.3]",
         "Provide system configuration settings to confirm audit logs are backed up to a secure, central, internal log server or other difficult-to-modify media.",
-        "passed" if forwarding else "failed",
+        "passed" if is_valid else "failed",
         [
-            logging.get("script_result", "No log-forwarding result found"),
+            script_result,
             f"Forwarding configured = {forwarding}",
-            f"Forwarding targets = {logging.get('forwarding_targets')}",
+            f"Forwarding targets = {targets}",
+            f"Target count = {len(targets)}",
         ],
         ["10.3.3_logging.txt"],
         default_file="10.3.3_logging.txt",
@@ -3054,8 +2904,8 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [10.6.1]
     # -------------------------
-    synchronized = ts.get("synchronized")
-    ntp_active = ts.get("ntp_service") == "active"
+    synchronized = ts.get("synchronized") or "True" in ts.get("synchronized")
+    ntp_active = ts.get("ntp_service") == "active" or ts.get("ntp_service") == "enabled"
     status_1061 = "passed" if (synchronized and ntp_active) else "failed"
     add(
         "[10.6.1]",
@@ -3193,4 +3043,4 @@ def evaluate_from_json(data, all_files, cheat_sheet):
 
 
 if __name__ == "__main__":
-    build_report("linux_output.json", "report.html")
+    build_report("linux_output.json", "report.html", sample_files_folder=None)

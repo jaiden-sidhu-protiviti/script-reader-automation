@@ -35,7 +35,7 @@ def parse_running_services(file_path):
             # - A 'State' or 'ServiceStatus' column
             status_value = (row.get("Status") or row.get("State") or row.get("ServiceStatus") or "").strip().lower()
             has_exited = str(row.get("HasExited") or row.get("Exited") or "").strip().lower()
-            exit_code = str(row.get("ExitCode") or row.get("Exit_Code") or row.get("Exit code") or "").strip().lower()
+            str(row.get("ExitCode") or row.get("Exit_Code") or row.get("Exit code") or "").strip().lower()
             id_val = str(row.get("Id") or row.get("PID") or row.get("ProcessId") or row.get("Process Id") or "").strip()
 
             # Determine running/stopped
@@ -195,7 +195,6 @@ def parse_rdp_local(file_path):
 
     with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
-            raw_line = line
             line = line.rstrip()
 
             # Skip noise
@@ -229,7 +228,6 @@ def parse_installed_patches(file_path):
 
     patches = []
     in_table = False
-    headers = []
     col_starts = []
 
     with open(file_path, "r", encoding="utf-8") as f:
@@ -243,7 +241,6 @@ def parse_installed_patches(file_path):
 
         # Header row
         if stripped.startswith("HotFixID"):
-            headers = ["HotFixID", "InstalledOn", "Description", "InstalledBy"]
 
             # find column start positions dynamically
             col_starts = [
@@ -524,7 +521,6 @@ def parse_time_settings(file_path):
 
     with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
-            raw_line = line
             line = line.rstrip()
 
             # Skip noise lines
@@ -859,7 +855,6 @@ def parse_security_policies_local(file_path):
 
     with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
-            raw = line
             line = line.strip()
 
             # Skip noise
@@ -907,7 +902,6 @@ def parse_security_policies_domain(file_path):
 
     with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
-            raw = line
             line = line.strip()
 
             # Skip noise

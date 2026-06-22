@@ -4,7 +4,8 @@
 
 import os
 import json
-
+import csv
+import re
 
 # 1.2.5_running_services.txt
 def parse_running_services(file_path):
@@ -177,9 +178,6 @@ def parse_update_history(file_path):
     return {"update_history": updates}
 
 
-import csv
-
-
 # 6.3.3_package_manager.csv
 def parse_package_manager(file_path):
     # File not found requirement
@@ -220,8 +218,8 @@ def parse_summary(file_path):
     try:
         ip_idx = headers.index("IP")
         log_active_idx = headers.index("LogActive")
-        log_level_idx = headers.index("LogLevel")
-        timesync_idx = headers.index("TimesyncEnabled")
+        headers.index("LogLevel")
+        headers.index("TimesyncEnabled")
     except ValueError:
         return {"summary": "missing expected columns"}
 
@@ -311,11 +309,8 @@ def parse_groups(file_path):
 
 
 # 10.3.3_logging.txt
-import os
-
-
 def parse_logging(file_path):
-    # File not found requirement
+    # File not found
     if not os.path.exists(file_path):
         return {"logging": "no file found"}
 
@@ -329,24 +324,42 @@ def parse_logging(file_path):
 
             if not line:
                 continue
+
+            # Skip host metadata
             if line.startswith("Host "):
                 continue
 
-            if "did not find any log forwarding targets" in line.lower():
+            # Normalize early
+            line_lower = line.lower()
+
+            # Capture script hint if present
+            if "did not find any log forwarding targets" in line_lower:
                 script_result = "no forwarding found"
 
             if line.startswith("#"):
                 continue
 
-            if "Target=" in line:
+            # rainerScript forwarding (Target=)
+            if "target=" in line_lower:
                 forwarding_configured = True
 
                 try:
-                    start = line.index("Target=") + len("Target=")
+                    start = line_lower.index("target=") + len("target=")
                     target = line[start:].split()[0].replace('"', "").strip()
                     forwarding_targets.append(target)
-                except:
+                except Exception:
                     pass
+
+                continue
+
+            # Example: *.notice  @10.95.237.33
+            match = re.search(r'@\@?([a-zA-Z0-9\.\-]+)', line)
+            if match:
+                forwarding_configured = True
+                forwarding_targets.append(match.group(1))
+                continue
+
+    forwarding_targets = list(set(forwarding_targets))  # dedupe
 
     if forwarding_configured and not script_result:
         script_result = "forwarding configured"
@@ -373,6 +386,10 @@ def parse_timesync(file_path):
     ntp_service = ""
     rtc_local_tz = ""
 
+    # fallback candidates
+    ntp_enabled = None
+    ntp_synchronized = None
+
     with open(file_path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -382,15 +399,34 @@ def parse_timesync(file_path):
             if line.startswith("Host "):
                 continue
 
-            if line.lower().startswith("system clock synchronized"):
+            lower_line = line.lower()
+
+            # --- PRIMARY LOGIC (existing) ---
+            if lower_line.startswith("system clock synchronized"):
                 value = line.split(":", 1)[1].strip().lower()
                 synchronized = value == "yes"
 
-            elif line.lower().startswith("ntp service"):
+            elif lower_line.startswith("ntp service"):
                 ntp_service = line.split(":", 1)[1].strip().lower()
 
-            elif line.lower().startswith("rtc in local tz"):
+            elif lower_line.startswith("rtc in local tz"):
                 rtc_local_tz = line.split(":", 1)[1].strip().lower()
+
+            # --- FALLBACK CAPTURE (new format) ---
+            elif lower_line.startswith("ntp enabled"):
+                ntp_enabled = line.split(":", 1)[1].strip().lower() == "yes"
+
+            elif lower_line.startswith("ntp synchronized"):
+                ntp_synchronized = line.split(":", 1)[1].strip().lower() == "yes"
+
+    # --- FALLBACK APPLICATION ---
+    # Only apply if primary fields missing
+    if synchronized is None and ntp_synchronized is not None:
+        synchronized = ntp_synchronized
+
+    if not ntp_service and ntp_enabled is not None:
+        # normalize to something consistent with existing output
+        ntp_service = "enabled" if ntp_enabled else "disabled"
 
     return {
         "timesync": {
@@ -402,7 +438,6 @@ def parse_timesync(file_path):
 
 
 # password.txt
-import os
 
 
 def parse_passwd(file_path):
@@ -451,8 +486,6 @@ def parse_passwd(file_path):
 
 # 6.3.3_repolist.txt
 def parse_repolist(file_path):
-    import os
-
     if not os.path.exists(file_path):
         return {"repolist": "no file found"}
 
@@ -474,8 +507,6 @@ def parse_repolist(file_path):
 
 # sudoers.txt
 def parse_sudoers(file_path):
-    import os
-
     if not os.path.exists(file_path):
         return {"sudoers": "no file found"}
 
@@ -532,8 +563,6 @@ def parse_enabled_users(file_path):
 
 # 8.2_last20logins.txt
 def parse_last_logins(file_path):
-    import os
-
     if not os.path.exists(file_path):
         return {"last_logins": "no file found"}
 
@@ -555,8 +584,6 @@ def parse_last_logins(file_path):
 
 # 8.2.4_user_changes.txt
 def parse_user_changes(file_path):
-    import os
-
     if not os.path.exists(file_path):
         return {"user_changes": "no file found"}
 
@@ -576,8 +603,6 @@ def parse_user_changes(file_path):
 
 # 8.2.8_tmout.txt
 def parse_tmout(file_path):
-    import os
-
     if not os.path.exists(file_path):
         return {"tmout": "no file found"}
 
@@ -598,12 +623,8 @@ def parse_tmout(file_path):
 
 # 10.6.2_timesources.txt
 def parse_timesources(file_path):
-    import os
-
     if not os.path.exists(file_path):
         return {"timesources": "no file found"}
-
-    import re
 
     sources = []
 
@@ -634,8 +655,6 @@ def parse_timesources(file_path):
 
 # shadow.txt
 def parse_shadow(file_path):
-    import os
-
     if not os.path.exists(file_path):
         return {"shadow": "no file found"}
 
@@ -808,5 +827,5 @@ def build_linux_output(base_path="sampleLinux", output_path="linux_output.json")
 
 
 if __name__ == "__main__":
-    result = build_linux_output()
+    json_result = build_linux_output()
     # print(json.dumps(result, indent=4))

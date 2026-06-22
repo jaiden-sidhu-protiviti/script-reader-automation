@@ -4,15 +4,18 @@
 # loading, rule evaluation, and homepage rendering.
 
 import html
-from importlib.metadata import files
 import json
 import os
 import sys
 import uuid
-from windowsParser import build_windows_output
+from datetime import datetime, timezone
 
 TRUNCATION_MARKER = "__TRUNCATED__"
 MAX_LINES = 300
+
+
+def as_dict(x):
+    return x if isinstance(x, dict) else {}
 
 
 def load_sample_files(folder="sampleWindows"):
@@ -141,7 +144,6 @@ def get_administrative_template_value(data, key):
             return normalize_rdp_template_value(state)
     return None
 
-
 def get_rdp_setting(data, key):
     admin_val = get_administrative_template_value(data, key)
     if admin_val not in [None, ""]:
@@ -166,6 +168,7 @@ def get_rdp_setting(data, key):
                 return "0"
         except Exception:
             pass
+
     # infer SecurityLayer from MinEncryptionLevel when missing
     if key == "SecurityLayer":
         min_enc = get_administrative_template_value(data, "MinEncryptionLevel")
@@ -180,6 +183,7 @@ def get_rdp_setting(data, key):
                 return "1"
         except Exception:
             pass
+
     # infer fEncryptRPCTraffic from MinEncryptionLevel or SecurityLayer when missing
     if key == "fEncryptRPCTraffic":
         enc = get_administrative_template_value(data, "MinEncryptionLevel")
@@ -203,6 +207,7 @@ def get_rdp_setting(data, key):
                 return "1"
         except Exception:
             pass
+
     # try backup names for UserAuthentication
     if key == "UserAuthentication":
         # check common backup keys in rdp sections
@@ -214,6 +219,7 @@ def get_rdp_setting(data, key):
             )
             if val not in (None, ""):
                 return val
+    
     # fallback to legacy rdp values if administrative templates are absent
     if key in {
         "UserAuthentication",
@@ -246,7 +252,7 @@ def load_key_vars_windows(data):
         try:
             if isinstance(obj, list):
                 return obj[0] if obj else {}
-            elif isinstance(obj, dict):
+            if isinstance(obj, dict):
                 return obj
         except Exception:
             pass
@@ -441,8 +447,7 @@ def render_html(
         def link_or_disabled(href, label, title):
             if href:
                 return f"<a class='nav-btn' href='{html.escape(href)}' title='{html.escape(title)}'>{label}</a>"
-            else:
-                return f"<span class='nav-btn nav-disabled' title='{html.escape(title)}'>{label}</span>"
+            return f"<span class='nav-btn nav-disabled' title='{html.escape(title)}'>{label}</span>"
 
         # Use simple icons for compact circular buttons
         home_btn = link_or_disabled(home, '🏠︎', 'Home')
@@ -493,12 +498,8 @@ def render_html(
 
         f.write("<style>\n")
         f.write("    body { font-family: Arial, sans-serif; margin: 24px; }\n")
-        f.write(
-            "    table { width: 100%; border-collapse: collapse; table-layout: fixed; }\n"
-        )
-        f.write(
-            "    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: top; word-wrap: break-word; word-break: break-word; }\n"
-        )
+        f.write("    table { width: 100%; border-collapse: collapse; table-layout: fixed; }\n")
+        f.write("    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; vertical-align: top; word-wrap: break-word; word-break: break-word; }\n")
         f.write("    th { background: #333; color: #fff; }\n")
         f.write("    th:nth-child(1) { width: 6%; }\n")
         f.write("    th:nth-child(2) { width: 18%; }\n")
@@ -513,100 +514,35 @@ def render_html(
         f.write("    tr.manual { background: #eef0f5; }\n")
         f.write("    tr.unknown { background: #f0f0f0; }\n")
         f.write("    .finding-item { margin-bottom: 0.9em; display: block; }\n")
-        f.write(
-            "    .finding-label { font-family: Arial, sans-serif; margin-bottom: 0.2em; display: block; }\n"
-        )
-        f.write(
-            "    .finding-snippet { margin: 0.25em 0 0; font-family: 'Courier New', Courier, monospace; background: #f7f7f7; padding: 6px; border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }\n"
-        )
-        f.write(
-            "    .finding-file { font-size: 0.9em; color: #444; margin-top: 0.25em; }\n"
-        )
-        f.write(
-            "    #reviewModal { display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); }\n"
-        )
-        f.write(
-            "    #reviewModal .box { background: #fff; margin: 40px auto; padding: 12px; width: 80%; max-width: 900px; border-radius: 6px; }\n"
-        )
-        f.write(
-            "    #reviewModal textarea { width: 100%; height: 240px; font-family: monospace; }\n"
-        )
-        f.write(
-            "    .review-btn { padding: 6px 12px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }\n"
-        )
+        f.write("    .finding-label { font-family: Arial, sans-serif; margin-bottom: 0.2em; display: block; }\n")
+        f.write("    .finding-snippet { margin: 0.25em 0 0; font-family: 'Courier New', Courier, monospace; background: #f7f7f7; padding: 6px; border-radius: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }\n")
+        f.write("    .finding-file { font-size: 0.9em; color: #444; margin-top: 0.25em; }\n")
+        f.write("    #reviewModal { display: none; position: fixed; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.4); }\n")
+        f.write("    #reviewModal .box { background: #fff; margin: 40px auto; padding: 12px; width: 80%; max-width: 900px; border-radius: 6px; }\n")
+        f.write("    #reviewModal textarea { width: 100%; height: 240px; font-family: monospace; }\n")
+        f.write("    .review-btn { padding: 6px 12px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; }\n")
         f.write("    .review-btn:hover { background: #0052a3; }\n")
-        f.write(
-            "    .top-toolbar { margin: 16px 0; display: flex; justify-content: flex-start; gap: 12px; }\n"
-        )
-        f.write(
-            "    .export-btn { padding: 10px 16px; background: #198754; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }\n"
-        )
+        f.write("    .top-toolbar { margin: 16px 0; display: flex; justify-content: flex-start; gap: 12px; }\n")
+        f.write("    .export-btn { padding: 10px 16px; background: #198754; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }\n")
         f.write("    .export-btn:hover { background: #157347; }\n")
         f.write("    .qsa-response-text { font-size: 0.82em; color: #333; }\n")
-        f.write("""
-            .kv-container {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-                gap: 16px;
-                margin-bottom: 24px;
-            }
-
-            .kv-card {
-                border: 1px solid #ddd;
-                border-radius: 8px;
-                padding: 12px;
-                background: #fafafa;
-                box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-            }
-
-            .kv-card h3 {
-                margin-top: 0;
-                margin-bottom: 8px;
-                font-size: 1.05em;
-                color: #333;
-            }
-
-            .kv-table {
-                width: 100%;
-                border-collapse: collapse;
-                font-size: 0.85em;
-            }
-
-            .kv-table td {
-                border: none;
-                padding: 4px 6px;
-                vertical-align: top;
-            }
-
-            .kv-table td:first-child {
-                color: #555;
-                width: 55%;
-            }
-            """)
-        f.write(
-            "    /* Floating circular navigation buttons (bottom-right) */\n"
-        )
-        f.write(
-            "    .floating-nav { position: fixed; right: 18px; bottom: 18px; display: flex; gap: 10px; align-items: center; z-index: 9999; }\n"
-        )
-        f.write(
-            "    .nav-btn { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: #007bff; color: #fff; text-decoration: none; font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.18); transition: transform 0.12s ease, background 0.12s ease; }\n"
-        )
-        f.write(
-            "    .nav-btn:hover { transform: translateY(-3px); background: #0056b3; }\n"
-        )
-        f.write(
-            "    .nav-btn.nav-disabled { background: #dcdcdc; color: #888; cursor: default; pointer-events: none; box-shadow: none; }\n"
-        )
+        f.write(""".kv-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px; }
+            .kv-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fafafa; box-shadow: 0 1px 3px rgba(0,0,0,0.08);}
+            .kv-card h3 { margin-top: 0; margin-bottom: 8px; font-size: 1.05em; color: #333; }
+            .kv-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+            .kv-table td { border: none; padding: 4px 6px; vertical-align: top; }
+            .kv-table td:first-child { color: #555; width: 55%; } """)
+        f.write("    .floating-nav { position: fixed; right: 18px; bottom: 18px; display: flex; gap: 10px; align-items: center; z-index: 9999; }\n")
+        f.write("    .nav-btn { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: #007bff; color: #fff; text-decoration: none; font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.18); transition: transform 0.12s ease, background 0.12s ease; }\n")
+        f.write("    .nav-btn:hover { transform: translateY(-3px); background: #0056b3; }\n")
+        f.write("    .nav-btn.nav-disabled { background: #dcdcdc; color: #888; cursor: default; pointer-events: none; box-shadow: none; }\n")
         f.write("</style>\n")
 
-        f.write(
-            "<table id='requirementsTable'><thead><tr><th>ID</th><th>Description</th><th>Status</th><th>Files</th><th>Findings</th><th>Look For</th><th>QSA Response</th></tr></thead><tbody>\n"
-        )
+        f.write( "<table id='requirementsTable'><thead><tr><th>ID</th><th>Description</th><th>Status</th><th>Files</th><th>Findings</th><th>Look For</th><th>QSA Response</th></tr></thead><tbody>\n")
         for r in rows:
             f.write(r + "\n")
         f.write("</tbody></table>\n")
-        f.write(f"<script>\n")
+        f.write("<script>\n")
         f.write(f"    const REPORT_EVIDENCE = {evidence_json};\n")
 
         f.write("    function escapeHtml(text) {\n")
@@ -640,38 +576,25 @@ def render_html(
 
         f.write("    function getFindingsText(row) {\n")
         f.write("        const findingsCell = row.children[4].cloneNode(true);\n")
-        f.write(
-            "        findingsCell.querySelectorAll('button').forEach(btn => btn.remove());\n"
-        )
-        f.write(
-            "        return findingsCell.innerText.replace(/\\n{3,}/g, '\\n\\n').trim();\n"
-        )
+        f.write("        findingsCell.querySelectorAll('button').forEach(btn => btn.remove());\n")
+        f.write("        return findingsCell.innerText.replace(/\\n{3,}/g, '\\n\\n').trim();\n")
         f.write("    }\n")
 
         f.write("  function doExportXlsx() {\n")
         f.write("    const selected = Array.from(\n")
-        f.write(
-            "      document.querySelectorAll('#exportHostList input[type=checkbox]')\n"
-        )
+        f.write("      document.querySelectorAll('#exportHostList input[type=checkbox]')\n")
         f.write("    ).filter(cb => cb.checked).map(cb => parseInt(cb.dataset.idx));\n")
-        f.write(
-            "    if (selected.length === 0) { alert('Please select at least one host.'); return; }\n"
-        )
+        f.write("    if (selected.length === 0) { alert('Please select at least one host.'); return; }\n")
         f.write("    const wb = XLSX.utils.book_new();\n")
-        f.write(
-            "    const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','Editor Notes'];\n"
-        )
+        f.write("    const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','Editor Notes'];\n")
         f.write("    selected.forEach(idx => {\n")
         f.write("      const host = EXPORT_DATA[idx];\n")
         f.write("      const sheetData = [headers];\n")
         f.write("      host.rows.forEach(row => {\n")
+
         # Build the same localStorage key the report page uses
-        f.write(
-            "        const reqKey   = 'req_' + row.id.replace(/[^a-zA-Z0-9]/g, '_');\n"
-        )
-        f.write(
-            "        const storeKey = 'zipaudit|' + host.hostname + '|' + reqKey;\n"
-        )
+        f.write("        const reqKey   = 'req_' + row.id.replace(/[^a-zA-Z0-9]/g, '_');\n")
+        f.write("        const storeKey = 'zipaudit|' + host.hostname + '|' + reqKey;\n")
         f.write("        const raw      = localStorage.getItem(storeKey);\n")
         f.write("        let   status   = row.status;\n")
         f.write("        let   noteStr  = '';\n")
@@ -681,28 +604,19 @@ def render_html(
         f.write("            status = saved.status || status;\n")
         f.write("            if (Array.isArray(saved.notes) && saved.notes.length) {\n")
         f.write("              noteStr = saved.notes\n")
-        f.write(
-            "                .map(n => n.timestamp + ' | moved to ' + n.status + ' | ' + n.note)\n"
-        )
+        f.write("                .map(n => n.timestamp + ' | moved to ' + n.status + ' | ' + n.note)\n")
         f.write("                .join('\\n\\n');\n")
         f.write("            }\n")
         f.write("          } catch(e) {}\n")
         f.write("        }\n")
+
         # Only include QSA response if the current (possibly overridden) status is passed
-        f.write(
-            "        const qsaText = status === 'passed' ? row.qsa_response : '';\n"
-        )
-        f.write(
-            "        sheetData.push([row.id, row.description, status, row.files, row.findings, row.look_for, qsaText, noteStr]);\n"
-        )
+        f.write("        const qsaText = status === 'passed' ? row.qsa_response : '';\n")
+        f.write("        sheetData.push([row.id, row.description, status, row.files, row.findings, row.look_for, qsaText, noteStr]);\n")
         f.write("      });\n")
         f.write("      const ws = XLSX.utils.aoa_to_sheet(sheetData);\n")
-        f.write(
-            "      ws['!cols'] = [{wch:30},{wch:50},{wch:10},{wch:25},{wch:60},{wch:40},{wch:60},{wch:50}];\n"
-        )
-        f.write(
-            "      const sheetName = (host.hostname + ' (' + host.os_label + ')').replace(/[\\\\\\/?*\\[\\]]/g, '').substring(0, 31);\n"
-        )
+        f.write("      ws['!cols'] = [{wch:30},{wch:50},{wch:10},{wch:25},{wch:60},{wch:40},{wch:60},{wch:50}];\n")
+        f.write("      const sheetName = (host.hostname + ' (' + host.os_label + ')').replace(/[\\\\\\/?*\\[\\]]/g, '').substring(0, 31);\n")
         f.write("      XLSX.utils.book_append_sheet(wb, ws, sheetName);\n")
         f.write("    });\n")
         f.write("    const ts = new Date().toISOString().replace(/[:.]/g, '-');\n")
@@ -717,15 +631,11 @@ def render_html(
         f.write("        const previous = localStorage.getItem(BUILD_RESET_MARKER);\n")
         f.write("        if (previous !== REPORT_SESSION) {\n")
         f.write("            Object.keys(localStorage).forEach(k => {\n")
-        f.write(
-            "                if (k.startsWith('zipaudit|') && k !== BUILD_RESET_MARKER) {\n"
-        )
+        f.write("                if (k.startsWith('zipaudit|') && k !== BUILD_RESET_MARKER) {\n")
         f.write("                    localStorage.removeItem(k);\n")
         f.write("                }\n")
         f.write("            });\n")
-        f.write(
-            "            localStorage.setItem(BUILD_RESET_MARKER, REPORT_SESSION);\n"
-        )
+        f.write("            localStorage.setItem(BUILD_RESET_MARKER, REPORT_SESSION);\n")
         f.write("        }\n")
         f.write("    })();\n")
         f.write("\n")
@@ -737,19 +647,13 @@ def render_html(
 
         f.write("    function saveRowState(row, status, notes) {\n")
         f.write("        const key = storageKey(row.id);\n")
-        f.write(
-            "        localStorage.setItem(key, JSON.stringify({status: status, notes: notes}));\n"
-        )
-        f.write(
-            "        window.dispatchEvent(new StorageEvent('storage', { key: key }));\n"
-        )
+        f.write("        localStorage.setItem(key, JSON.stringify({status: status, notes: notes}));\n")
+        f.write("        window.dispatchEvent(new StorageEvent('storage', { key: key }));\n")
         f.write("    }\n")
         f.write("\n")
 
         f.write("    function loadAllRowStates() {\n")
-        f.write(
-            "        const rows = Array.from(document.querySelectorAll('#requirementsTable tbody tr'));\n"
-        )
+        f.write("        const rows = Array.from(document.querySelectorAll('#requirementsTable tbody tr'));\n")
         f.write("        rows.forEach((row, idx) => {\n")
         f.write("            const raw = localStorage.getItem(storageKey(row.id));\n")
         f.write("            if (!raw) return;\n")
@@ -758,35 +662,21 @@ def render_html(
         f.write("                row.className = saved.status;\n")
         f.write("                row.children[2].innerText = saved.status;\n")
         f.write("                syncQsaResponse(row, idx, saved.status);\n")
-        f.write(
-            "                row.querySelectorAll('.editor-note').forEach(e => e.remove());\n"
-        )
+        f.write("                row.querySelectorAll('.editor-note').forEach(e => e.remove());\n")
         f.write("                if (Array.isArray(saved.notes)) {\n")
         f.write("                    setEditorNotes(row, saved.notes);\n")
         f.write("                    saved.notes.forEach(n => {\n")
         f.write("                        const cell    = row.children[4];\n")
-        f.write(
-            "                        const wrapper = document.createElement('div');\n"
-        )
-        f.write(
-            "                        wrapper.className = 'finding-item editor-note';\n"
-        )
-        f.write(
-            "                        const label = document.createElement('div');\n"
-        )
+        f.write("                        const wrapper = document.createElement('div');\n")
+        f.write("                        wrapper.className = 'finding-item editor-note';\n")
+        f.write("                        const label = document.createElement('div');\n")
         f.write("                        label.className = 'finding-label';\n")
-        f.write(
-            "                        label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(n.timestamp) + ', moved to ' + escapeHtml(n.status) + '):</b>';\n"
-        )
+        f.write("                        label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(n.timestamp) + ', moved to ' + escapeHtml(n.status) + '):</b>';\n")
         f.write("                        const body = document.createElement('div');\n")
-        f.write(
-            "                        body.innerHTML = escapeHtml(n.note).replace(/\\n/g, '<br>');\n"
-        )
+        f.write("                        body.innerHTML = escapeHtml(n.note).replace(/\\n/g, '<br>');\n")
         f.write("                        wrapper.appendChild(label);\n")
         f.write("                        wrapper.appendChild(body);\n")
-        f.write(
-            "                        cell.insertBefore(wrapper, cell.firstChild);\n"
-        )
+        f.write("                        cell.insertBefore(wrapper, cell.firstChild);\n")
         f.write("                    });\n")
         f.write("                }\n")
         f.write("            } catch(e) {}\n")
@@ -794,18 +684,14 @@ def render_html(
         f.write("    }\n")
         f.write("\n")
 
-        f.write(
-            "    document.addEventListener('DOMContentLoaded', loadAllRowStates);\n"
-        )
+        f.write("    document.addEventListener('DOMContentLoaded', loadAllRowStates);\n")
         f.write("\n")
 
         f.write("    function resolveFileContent(raw, filename) {\n")
         f.write("        const marker = '__TRUNCATED__:';\n")
         f.write("        const idx = raw.indexOf(marker);")
         f.write("        if (idx === -1) return raw;\n")
-        f.write(
-            "        const blob = new Blob([raw.substring(0, idx)], { type: 'text/plain' });\n"
-        )
+        f.write("        const blob = new Blob([raw.substring(0, idx)], { type: 'text/plain' });\n")
         f.write("        const url = URL.createObjectURL(blob);\n")
         f.write("        return raw.substring(0, idx)\n")
         f.write("            + '\\n\\n[File truncated at 300 lines]\\n'\n")
@@ -813,29 +699,19 @@ def render_html(
         f.write("    }\n")
 
         f.write("    function displayFileContent(content, filename) {\n")
-        f.write(
-            "        const linkPattern = /\\[DOWNLOAD_LINK:([^:]+):([^\\]]+)\\]/;\n"
-        )
+        f.write("        const linkPattern = /\\[DOWNLOAD_LINK:([^:]+):([^\\]]+)\\]/;\n")
         f.write("        const match = content.match(linkPattern);\n")
         f.write("        const textarea = document.getElementById('fileContent');\n")
-        f.write(
-            "        const existing = document.getElementById('fileDownloadLink');\n"
-        )
+        f.write("        const existing = document.getElementById('fileDownloadLink');\n")
         f.write("        if (existing) existing.remove();\n")
         f.write("        if (match) {\n")
-        f.write(
-            "            textarea.value = content.replace(linkPattern, '').trim();\n"
-        )
+        f.write("            textarea.value = content.replace(linkPattern, '').trim();\n")
         f.write("            const a = document.createElement('a');\n")
         f.write("            a.id = 'fileDownloadLink';\n")
         f.write("            a.href = match[1];\n")
         f.write("            a.download = match[2];\n")
-        f.write(
-            "            a.style.cssText = 'display:inline-block;margin-top:6px;font-size:0.9em;color:#0066cc;';\n"
-        )
-        f.write(
-            "            textarea.parentNode.insertBefore(a, textarea.nextSibling);\n"
-        )
+        f.write("            a.style.cssText = 'display:inline-block;margin-top:6px;font-size:0.9em;color:#0066cc;';\n")
+        f.write("            textarea.parentNode.insertBefore(a, textarea.nextSibling);\n")
         f.write("        } else {\n")
         f.write("            textarea.value = content;\n")
         f.write("        }\n")
@@ -862,19 +738,13 @@ def render_html(
         f.write("            sel.selectedIndex = 0;\n")
         f.write("        }\n")
         f.write("        const raw = files[sel.value] || '';\n")
-        f.write(
-            "        displayFileContent(resolveFileContent(raw, sel.value), sel.value);\n"
-        )
-        f.write(
-            "        document.getElementById('statusSelect').value = document.querySelectorAll('#requirementsTable tbody tr')[idx].children[2].innerText.trim();\n"
-        )
+        f.write("        displayFileContent(resolveFileContent(raw, sel.value), sel.value);\n")
+        f.write("        document.getElementById('statusSelect').value = document.querySelectorAll('#requirementsTable tbody tr')[idx].children[2].innerText.trim();\n")
         f.write("        document.getElementById('editorNote').value = '';\n")
         f.write("    }\n")
 
         f.write("    function closeReview() {\n")
-        f.write(
-            "        document.getElementById('reviewModal').style.display = 'none';\n"
-        )
+        f.write("        document.getElementById('reviewModal').style.display = 'none';\n")
         f.write("    }\n")
 
         f.write("    function syncQsaResponse(row, idx, status) {\n")
@@ -883,26 +753,20 @@ def render_html(
         f.write("        const evidence = REPORT_EVIDENCE[idx] || {};\n")
         f.write("        const response = evidence.qsa_response || '';\n")
         f.write("        if (String(status).toLowerCase() === 'passed') {\n")
-        f.write(
-            "            cell.innerHTML = '<span class=\"qsa-response-text\">' + escapeHtml(response) + '</span>';\n"
-        )
+        f.write("            cell.innerHTML = '<span class=\"qsa-response-text\">' + escapeHtml(response) + '</span>';\n")
         f.write("        } else {\n")
         f.write("            cell.innerHTML = '';\n")
         f.write("        }\n")
         f.write("    }\n")
 
         f.write("    document.addEventListener('click', function(e) {\n")
-        f.write(
-            "        if (e.target && e.target.classList && e.target.classList.contains('review-btn')) {\n"
-        )
+        f.write("        if (e.target && e.target.classList && e.target.classList.contains('review-btn')) {\n")
         f.write("            openReview(parseInt(e.target.dataset.idx));\n")
         f.write("        }\n")
         f.write("    });\n")
 
         f.write("    function onFileChange() {\n")
-        f.write(
-            "        const idx = document.getElementById('reviewModal').dataset.idx;\n"
-        )
+        f.write("        const idx = document.getElementById('reviewModal').dataset.idx;\n")
         f.write("        const f = this.value;\n")
         f.write("        const evidence = REPORT_EVIDENCE[idx] || {};\n")
         f.write("        const files = evidence.files || {};\n")
@@ -912,22 +776,12 @@ def render_html(
 
         f.write("    function saveReview() {\n")
         f.write("        const modal  = document.getElementById('reviewModal');\n")
-        f.write(
-            "        if (!modal) { console.error('Modal element not found'); return; }\n"
-        )
+        f.write("        if (!modal) { console.error('Modal element not found'); return; }\n")
         f.write("        const idx    = parseInt(modal.dataset.idx);\n")
-        f.write(
-            "        const status = document.getElementById('statusSelect').value;\n"
-        )
-        f.write(
-            "        const note   = document.getElementById('editorNote').value.trim();\n"
-        )
-        f.write(
-            "        const row = document.querySelectorAll('#requirementsTable tbody tr')[idx];\n"
-        )
-        f.write(
-            "        if (!row) { console.error('Row element not found at index ' + idx); return; }\n"
-        )
+        f.write("        const status = document.getElementById('statusSelect').value;\n")
+        f.write("        const note   = document.getElementById('editorNote').value.trim();\n")
+        f.write("        const row = document.querySelectorAll('#requirementsTable tbody tr')[idx];\n")
+        f.write("        if (!row) { console.error('Row element not found at index ' + idx); return; }\n")
         f.write("\n")
         f.write("        row.className = status;\n")
         f.write("        row.children[2].innerText = status;\n")
@@ -946,13 +800,9 @@ def render_html(
         f.write("            wrapper.className = 'finding-item editor-note';\n")
         f.write("            const label = document.createElement('div');\n")
         f.write("            label.className = 'finding-label';\n")
-        f.write(
-            "            label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(timestamp) + ', moved to ' + escapeHtml(status) + '):</b>';\n"
-        )
+        f.write("            label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(timestamp) + ', moved to ' + escapeHtml(status) + '):</b>';\n")
         f.write("            const body = document.createElement('div');\n")
-        f.write(
-            "            body.innerHTML = escapeHtml(note).replace(/\\n/g, '<br>');\n"
-        )
+        f.write("            body.innerHTML = escapeHtml(note).replace(/\\n/g, '<br>');\n")
         f.write("            wrapper.appendChild(label);\n")
         f.write("            wrapper.appendChild(body);\n")
         f.write("            cell.insertBefore(wrapper, cell.firstChild);\n")
@@ -964,12 +814,8 @@ def render_html(
         f.write("    }\n")
 
         f.write("  function applyStoredStatuses() {\n")
-        f.write(
-            "    document.querySelectorAll('tbody td[data-host][data-req]').forEach(td => {\n"
-        )
-        f.write(
-            "      const key = 'zipaudit|' + td.dataset.host + '|' + td.dataset.req;\n"
-        )
+        f.write("    document.querySelectorAll('tbody td[data-host][data-req]').forEach(td => {\n")
+        f.write("      const key = 'zipaudit|' + td.dataset.host + '|' + td.dataset.req;\n")
         f.write("      const raw = localStorage.getItem(key);\n")
         f.write("      if (!raw) return;\n")
         f.write("      try {\n")
@@ -980,36 +826,34 @@ def render_html(
         f.write("      } catch(e) {}\n")
         f.write("    });\n")
         f.write("  }\n")
-        f.write(
-            "  document.addEventListener('DOMContentLoaded', applyStoredStatuses);\n"
-        )
+
+        f.write("  function adjustHostHeaders(){\n")
+        f.write("    document.querySelectorAll('th .host-header').forEach(el=>{\n")
+        f.write("      el.classList.remove('shrunk'); el.style.fontSize='1em'; el.style.whiteSpace='nowrap'; el.style.wordBreak='normal';\n")
+        f.write("      try{ if (el.scrollWidth > el.clientWidth){ el.style.whiteSpace='normal'; el.style.wordBreak='break-word'; el.classList.add('shrunk'); el.style.fontSize='0.6em'; } }catch(e){}\n")
+        f.write("    });\n")
+        f.write("  }\n")
+        f.write("  document.addEventListener('DOMContentLoaded', function(){ applyStoredStatuses(); adjustHostHeaders(); });\n")
+        f.write("  window.addEventListener('resize', adjustHostHeaders);\n")
         f.write("  window.addEventListener('focus', applyStoredStatuses);\n")
         f.write("  window.addEventListener('storage', applyStoredStatuses);\n")
 
         f.write("</script>\n")
-        f.write(f"<div id='reviewModal'><div class='box'>\n")
-        f.write(f"    <div style='display: flex; gap: 8px; align-items: center;'>\n")
-        f.write(f"        <label>Status:</label>\n")
-        f.write(
-            f"        <select id='statusSelect'><option>passed</option><option>failed</option><option>review</option><option>manual</option><option>unknown</option></select>\n"
-        )
-        f.write(f"        <label style='margin-left: 12px;'>File:</label>\n")
-        f.write(
-            f"        <select id='fileSelect' onchange='onFileChange.call(this)'></select>\n"
-        )
-        f.write(f"    </div>\n")
-        f.write(f"    <textarea id='fileContent' readonly></textarea>\n")
-        f.write(f"    <label>Editor's Note:</label>\n")
-        f.write(f"    <textarea id='editorNote'></textarea>\n")
-        f.write(f"    <div style='margin-top: 12px;'>\n")
-        f.write(
-            f"        <button onclick='saveReview()' style='padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;'>Save</button>\n"
-        )
-        f.write(
-            f"        <button onclick='closeReview()' style='padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 8px;'>Cancel</button>\n"
-        )
-        f.write(f"    </div>\n")
-        f.write(f"</div></div>\n")
+        f.write("<div id='reviewModal'><div class='box'>\n")
+        f.write("    <div style='display: flex; gap: 8px; align-items: center;'>\n")
+        f.write("        <label>Status:</label>\n")
+        f.write("        <select id='statusSelect'><option>passed</option><option>failed</option><option>review</option><option>manual</option><option>unknown</option></select>\n")
+        f.write("        <label style='margin-left: 12px;'>File:</label>\n")
+        f.write("        <select id='fileSelect' onchange='onFileChange.call(this)'></select>\n")
+        f.write("    </div>\n")
+        f.write("    <textarea id='fileContent' readonly></textarea>\n")
+        f.write("    <label>Editor's Note:</label>\n")
+        f.write("    <textarea id='editorNote'></textarea>\n")
+        f.write("    <div style='margin-top: 12px;'>\n")
+        f.write("        <button onclick='saveReview()' style='padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;'>Save</button>\n")
+        f.write("        <button onclick='closeReview()' style='padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 8px;'>Cancel</button>\n")
+        f.write("    </div>\n")
+        f.write("</div></div>\n")
         f.write("</body></html>\n")
 
 
@@ -1061,8 +905,6 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         ...
     ]
     """
-    import html
-    import json as _json
 
     all_req_ids = []
     req_desc = {}
@@ -1127,16 +969,14 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
             }
         )
 
-    export_data_json = _json.dumps(export_data)
-    total = sum(counts.values()) or 1  # avoid div/0 for progress bars
+    export_data_json = json.dumps(export_data)
+    sum(counts.values()) or 1  # avoid div/0 for progress bars
 
     with open(output_path, "w", encoding="utf-8") as f:
 
         f.write("<!DOCTYPE html>\n<html lang='en'>\n<head>\n")
         f.write("  <meta charset='utf-8'>\n")
-        f.write(
-            "  <meta name='viewport' content='width=device-width, initial-scale=1.0'>\n"
-        )
+        f.write("  <meta name='viewport' content='width=device-width, initial-scale=1.0'>\n")
         f.write("  <title>Script Report - Home</title>\n")
 
         # Summary counts
@@ -1146,15 +986,14 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
             f.write(f"<li><b>{html.escape(k.title())}</b>: {counts.get(k, 0)}</li>\n")
         f.write("</ul>\n")
 
-        f.write(
-            "  <script src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'></script>\n"
-        )
+        f.write("  <script src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'></script>\n")
         f.write("""
         <style>
         body { font-family: Arial, sans-serif; margin: 24px; }
         table { border-collapse: collapse; width: 100%; table-layout: fixed; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: middle; }
         th:first-child, td:first-child { text-align: left; }
+                
         .passed { background: #e5f7eb; }
         .failed { background: #f9d6d5; }
         .review { background: #fff4e5; }
@@ -1163,79 +1002,23 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         .legend span { display:inline-block; padding:4px 10px; margin-right:8px; border:1px solid #ccc; }
         .cell-link { display:block; width:100%; height:100%; text-decoration:none; color:inherit; }
         small { color:#444; }
-        .modal-overlay {
-        display: none;
-        position: fixed;
-        top: 0; left: 0;
-        width: 100%; height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        z-index: 1000;
-        justify-content: center;
-        align-items: center;
-        }
+        /* Host column header: allow wrapping and dynamic font-shrink when content overflows */
+        .host-header { display:block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .host-header.shrunk { white-space: normal; word-break: break-word; }
+                
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 1000; justify-content: center; align-items: center; }
         .modal-overlay.open { display: flex; }
-
-        .modal-box {
-        background: #ffffff;
-        border-radius: 12px;
-        padding: 28px 32px;
-        min-width: 360px;
-        max-width: 480px;
-        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.22);
-        }
-        .modal-box h3 {
-        margin: 0 0 18px 0;
-        font-family: Arial, sans-serif;
-        font-size: 1.2em;
-        color: #222;
-        border-bottom: 2px solid #e0e0e0;
-        padding-bottom: 12px;
-        }
-        .modal-select-row {
-        display: flex;
-        gap: 8px;
-        margin-bottom: 14px;
-        }
-        #exportHostList {
-        max-height: 220px;
-        overflow-y: auto;
-        border: 1px solid #e0e0e0;
-        border-radius: 8px;
-        padding: 8px 12px;
-        margin-bottom: 20px;
-        background: #fafafa;
-        }
-        #exportHostList label {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 7px 4px;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 0.95em;
-        color: #333;
-        }
-        #exportHostList label:hover {
-        background: #eef4ff;
-        }
-        #exportHostList input[type='checkbox'] {
-        width: 16px; height: 16px;
-        accent-color: #2e7d32;
-        cursor: pointer;
-        }
-        .modal-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 10px;
-        }
-        .btn {
-        font-family: Arial, sans-serif;
-        font-size: 0.9em;
-        padding: 8px 18px;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        }
+        .modal-box { background: #ffffff; border-radius: 12px; padding: 28px 32px; min-width: 360px; max-width: 480px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.22); }
+        .modal-box h3 { margin: 0 0 18px 0; font-family: Arial, sans-serif; font-size: 1.2em; color: #222; border-bottom: 2px solid #e0e0e0; padding-bottom: 12px; }
+        .modal-select-row { display: flex; gap: 8px; margin-bottom: 14px; }
+                
+        #exportHostList { max-height: 220px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 8px; padding: 8px 12px; margin-bottom: 20px; background: #fafafa; }
+        #exportHostList label { display: flex; align-items: center; gap: 8px; padding: 7px 4px; border-radius: 4px; cursor: pointer; font-size: 0.95em; color: #333; }
+        #exportHostList label:hover { background: #eef4ff; }
+        #exportHostList input[type='checkbox'] { width: 16px; height: 16px; accent-color: #2e7d32; cursor: pointer; }
+        .modal-actions { display: flex; justify-content: flex-end; gap: 10px; }
+                
+        .btn { font-family: Arial, sans-serif; font-size: 0.9em; padding: 8px 18px; border: none; border-radius: 6px; cursor: pointer; }
         .btn--sm     { padding: 5px 12px; font-size: 0.82em; }
         .btn--green  { background: #2e7d32; color: #fff; }
         .btn--blue   { background: #1565c0; color: #fff; }
@@ -1248,9 +1031,7 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         f.write("<header class='site-header'>\n")
         f.write("  <div class='toolbar'>\n")
         f.write("    <span class='badge'><h2>Audit Report</h2></span>\n")
-        f.write(
-            "    <button class='btn btn--green' onclick='openExportModal()'>&#8659;&nbsp; Export to XLSX</button>\n"
-        )
+        f.write("    <button class='btn btn--green' onclick='openExportModal()'>&#8659;&nbsp; Export to XLSX</button>\n")
         f.write("  </div>\n")
         f.write("</header>\n")
 
@@ -1274,7 +1055,7 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
             else:
                 os_label = "Unknown"
             col_header = f"{site['hostname']} ({os_label})"
-            f.write(f"<th>{html.escape(col_header)}</th>")
+            f.write(f"<th><div class='host-header'>{html.escape(col_header)}</div></th>")
         f.write("</tr></thead>\n<tbody>\n")
 
         for req_id in all_req_ids:
@@ -1309,21 +1090,13 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         f.write("  <div class='modal-box'>\n")
         f.write("    <h3>Select Hosts to Export</h3>\n")
         f.write("    <div class='modal-select-row'>\n")
-        f.write(
-            "      <button class='btn btn--blue btn--sm' onclick='toggleAllHosts(true)'>Select All</button>\n"
-        )
-        f.write(
-            "      <button class='btn btn--grey btn--sm' onclick='toggleAllHosts(false)'>Clear All</button>\n"
-        )
+        f.write("      <button class='btn btn--blue btn--sm' onclick='toggleAllHosts(true)'>Select All</button>\n")
+        f.write("      <button class='btn btn--grey btn--sm' onclick='toggleAllHosts(false)'>Clear All</button>\n")
         f.write("    </div>\n")
         f.write("    <div id='exportHostList'></div>\n")
         f.write("    <div class='modal-actions'>\n")
-        f.write(
-            "      <button class='btn btn--grey' onclick='closeExportModal()'>Cancel</button>\n"
-        )
-        f.write(
-            "      <button class='btn btn--green' onclick='doExportXlsx()'>Export XLSX</button>\n"
-        )
+        f.write("      <button class='btn btn--grey' onclick='closeExportModal()'>Cancel</button>\n")
+        f.write("      <button class='btn btn--green' onclick='doExportXlsx()'>Export XLSX</button>\n")
         f.write("    </div>\n")
         f.write("  </div>\n")
         f.write("</div>\n")
@@ -1336,9 +1109,7 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         f.write("    const previous = localStorage.getItem(BUILD_RESET_MARKER);\n")
         f.write("    if (previous !== REPORT_SESSION) {\n")
         f.write("      Object.keys(localStorage).forEach(k => {\n")
-        f.write(
-            "        if (k.startsWith('zipaudit|') && k !== BUILD_RESET_MARKER) {\n"
-        )
+        f.write("        if (k.startsWith('zipaudit|') && k !== BUILD_RESET_MARKER) {\n")
         f.write("          localStorage.removeItem(k);\n")
         f.write("        }\n")
         f.write("      });\n")
@@ -1346,12 +1117,8 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         f.write("    }\n")
         f.write("  })();\n")
         f.write("  function applyStoredStatuses() {\n")
-        f.write(
-            "    document.querySelectorAll('tbody td[data-host][data-req]').forEach(td => {\n"
-        )
-        f.write(
-            "      const key = 'zipaudit|' + td.dataset.host + '|' + td.dataset.req;\n"
-        )
+        f.write("    document.querySelectorAll('tbody td[data-host][data-req]').forEach(td => {\n")
+        f.write("      const key = 'zipaudit|' + td.dataset.host + '|' + td.dataset.req;\n")
         f.write("      const raw = localStorage.getItem(key);\n")
         f.write("      if (!raw) return;\n")
         f.write("      try {\n")
@@ -1363,9 +1130,7 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         f.write("    });\n")
         f.write("  }\n")
 
-        f.write(
-            "  document.addEventListener('DOMContentLoaded', applyStoredStatuses);\n"
-        )
+        f.write("  document.addEventListener('DOMContentLoaded', applyStoredStatuses);\n")
         f.write("  window.addEventListener('focus', applyStoredStatuses);\n")
         f.write("  window.addEventListener('storage', applyStoredStatuses);\n")
         f.write("  window.addEventListener('pageshow', applyStoredStatuses);\n")
@@ -1378,58 +1143,38 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         f.write("      const cb = document.createElement('input');\n")
         f.write("      cb.type = 'checkbox'; cb.checked = true; cb.dataset.idx = i;\n")
         f.write("      label.appendChild(cb);\n")
-        f.write(
-            "      label.appendChild(document.createTextNode(' ' + host.hostname + ' (' + host.os_label + ')'));\n"
-        )
+        f.write("      label.appendChild(document.createTextNode(' ' + host.hostname + ' (' + host.os_label + ')'));\n")
         f.write("      list.appendChild(label);\n")
         f.write("    });\n")
         f.write("    document.getElementById('exportModal').classList.add('open');\n")
         f.write("  }\n\n")
 
         f.write("  function closeExportModal() {\n")
-        f.write(
-            "    document.getElementById('exportModal').classList.remove('open');\n"
-        )
+        f.write("    document.getElementById('exportModal').classList.remove('open');\n")
         f.write("  }\n\n")
 
         f.write("  function toggleAllHosts(state) {\n")
-        f.write(
-            "    document.querySelectorAll('#exportHostList input[type=checkbox]')\n"
-        )
+        f.write("    document.querySelectorAll('#exportHostList input[type=checkbox]')\n")
         f.write("      .forEach(cb => cb.checked = state);\n")
         f.write("  }\n\n")
 
         f.write("    function doExportXlsx() {\n")
         f.write("        const selected = Array.from(\n")
-        f.write(
-            "            document.querySelectorAll('#exportHostList input[type=checkbox]')\n"
-        )
-        f.write(
-            "        ).filter(cb => cb.checked).map(cb => parseInt(cb.dataset.idx));\n"
-        )
-        f.write(
-            "        if (selected.length === 0) { alert('Please select at least one host.'); return; }\n"
-        )
+        f.write("            document.querySelectorAll('#exportHostList input[type=checkbox]')\n")
+        f.write("        ).filter(cb => cb.checked).map(cb => parseInt(cb.dataset.idx));\n")
+        f.write("        if (selected.length === 0) { alert('Please select at least one host.'); return; }\n")
         f.write("\n")
         f.write("        const wb      = XLSX.utils.book_new();\n")
-        f.write(
-            "        const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','Editor Notes'];\n"
-        )
+        f.write("        const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','Editor Notes'];\n")
         f.write("\n")
         f.write("        selected.forEach(idx => {\n")
         f.write("            const host      = EXPORT_DATA[idx];\n")
         f.write("            const sheetData = [headers];\n")
         f.write("\n")
         f.write("            host.rows.forEach(row => {\n")
-        f.write(
-            "                // Build the localStorage key the same way the report page does\n"
-        )
-        f.write(
-            "                const reqKey    = 'req_' + row.id.replace(/[^a-zA-Z0-9]/g, '_');\n"
-        )
-        f.write(
-            "                const storeKey = 'zipaudit|' + host.hostname + '|' + reqKey;\n"
-        )
+        f.write("                // Build the localStorage key the same way the report page does\n")
+        f.write("                const reqKey    = 'req_' + row.id.replace(/[^a-zA-Z0-9]/g, '_');\n")
+        f.write("                const storeKey = 'zipaudit|' + host.hostname + '|' + reqKey;\n")
         f.write("                const raw       = localStorage.getItem(storeKey);\n")
         f.write("                let   status    = row.status;\n")
         f.write("                let   noteStr   = '';\n")
@@ -1438,13 +1183,9 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         f.write("                    try {\n")
         f.write("                        const saved = JSON.parse(raw);\n")
         f.write("                        status  = saved.status || status;\n")
-        f.write(
-            "                        if (Array.isArray(saved.notes) && saved.notes.length) {\n"
-        )
+        f.write("                        if (Array.isArray(saved.notes) && saved.notes.length) {\n")
         f.write("                            noteStr = saved.notes\n")
-        f.write(
-            "                                .map(n => n.timestamp + ' | moved to ' + n.status + ' | ' + n.note)\n"
-        )
+        f.write("                                .map(n => n.timestamp + ' | moved to ' + n.status + ' | ' + n.note)\n")
         f.write("                                .join('\\n\\n');\n")
         f.write("                        }\n")
         f.write("                    } catch(e) {}\n")
@@ -1463,26 +1204,18 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         f.write("            });\n")
         f.write("\n")
         f.write("            const ws = XLSX.utils.aoa_to_sheet(sheetData);\n")
-        f.write(
-            "            ws['!cols'] = [{wch:30},{wch:50},{wch:10},{wch:25},{wch:60},{wch:40},{wch:60},{wch:50}];\n"
-        )
-        f.write(
-            "            const sheetName = (host.hostname + ' (' + host.os_label + ')').replace(/[\\\\\\/?*\\[\\]]/g, '').substring(0, 31);\n"
-        )
+        f.write("            ws['!cols'] = [{wch:30},{wch:50},{wch:10},{wch:25},{wch:60},{wch:40},{wch:60},{wch:50}];\n")
+        f.write("            const sheetName = (host.hostname + ' (' + host.os_label + ')').replace(/[\\\\\\/?*\\[\\]]/g, '').substring(0, 31);\n")
         f.write("            XLSX.utils.book_append_sheet(wb, ws, sheetName);\n")
         f.write("        });\n")
         f.write("\n")
         f.write("        const ts = new Date().toISOString().replace(/[:.]/g, '-');\n")
         f.write("        XLSX.writeFile(wb, `zip_audit_export_${ts}.xlsx`);\n")
-        f.write(
-            "        document.getElementById('exportModal').style.display = 'none';\n"
-        )
+        f.write("        document.getElementById('exportModal').style.display = 'none';\n")
         f.write("    }\n")
 
         # Close modal on backdrop click
-        f.write(
-            "  document.getElementById('exportModal').addEventListener('click', function(e) {\n"
-        )
+        f.write("  document.getElementById('exportModal').addEventListener('click', function(e) {\n")
         f.write("    if (e.target === this) closeExportModal();\n")
         f.write("  });\n")
 
@@ -1522,17 +1255,17 @@ def evaluate_from_json(data, all_files, cheat_sheet):
 
     summary = data.get("summary", {})
     running_services = data.get("running_services", [])
-    updates = data.get("update_history", [])
+    data.get("update_history", [])
     installed_apps = data.get("installed_apps", [])
     password_policy = data.get("password_policy", {})
     group_policy = data.get("group_policy", {})
     account_policies = group_policy.get("account_policies", {})
     audit_policy = data.get("audit_policy", {})
-    logged_on_users = data.get("logged_on_users", [])
+    data.get("logged_on_users", [])
     local_users = data.get("local_users", [])
     local_groups = data.get("local_groups", [])
-    rdp = data.get("rdp_config", {})
-    timesync = data.get("timesync", {})
+    data.get("rdp_config", {})
+    data.get("timesync", {})
     system_info = data.get("systeminfo", {})
 
     def get_pw(key_gp, key_pp, default=None):
@@ -1553,19 +1286,25 @@ def evaluate_from_json(data, all_files, cheat_sheet):
             return entry.get("value") or entry.get("state")
         return None
 
-    min_pw_len = int(get_pw("MinimumPasswordLength", "Minimum password length", 0) or 0)
-    pw_history = int(
+    def safe_int(value, default=0):
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    min_pw_len = safe_int(get_pw("MinimumPasswordLength", "Minimum password length", 0) or 0)
+    pw_history = safe_int(
         get_pw("PasswordHistorySize", "Length of password history maintained", 0) or 0
     )
-    max_pw_age = int(
+    max_pw_age = safe_int(
         get_pw("MaximumPasswordAge", "Maximum password age (days)", 0) or 0
     )
-    min_pw_age = int(
+    min_pw_age = safe_int(
         get_pw("MinimumPasswordAge", "Minimum password age (days)", 0) or 0
     )
-    lockout_count = int(get_pw("LockoutBadCount", "Lockout threshold", 0) or 0)
+    lockout_count = safe_int(get_pw("LockoutBadCount", "Lockout threshold", 0) or 0)
     lockout_dur_raw = get_pw("LockoutDuration", "Lockout duration (minutes)", "0")
-    reset_count = int(
+    reset_count = safe_int(
         get_pw("ResetLockoutCount", "Lockout observation window (minutes)", 0) or 0
     )
 
@@ -1587,7 +1326,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     policy_audit = audit_policy.get("Policy Change", {}).get("Audit Policy Change", "")
     telnet_disabled = str(summary.get("Telnet", "")).upper() != "TRUE"
     nla_enabled = str(get_rdp_setting(data, "UserAuthentication") or "").strip() == "1"
-    rdp_encryption = get_rdp_setting(data, "SecurityLayer") or ""
+    get_rdp_setting(data, "SecurityLayer") or ""
 
     # -------------------------
     # [2.2.1.c]
@@ -2434,7 +2173,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     admin_group_members_7 = []
     rdp_group_members = []
 
-    restricted_groups_7 = data.get("group_policy", {}).get("restricted_groups")
+    restricted_groups_7 = as_dict(data.get("group_policy", {}).get("restricted_groups"))
     # If restricted_groups is missing or empty, try falling back to top-level `groups` list
     if not restricted_groups_7:
         groups_list = data.get("groups") or []
@@ -2878,10 +2617,9 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [8.2.6]
     # -------------------------
-    from datetime import datetime, timezone
 
     findings_826 = []
-    ninety_days_ago = datetime.now(timezone.utc).replace(tzinfo=None)
+    datetime.now(timezone.utc).replace(tzinfo=None)
 
     stale_accounts = []
     unparseable = []
@@ -3053,8 +2791,8 @@ def evaluate_from_json(data, all_files, cheat_sheet):
 
     findings_832a = []
 
-    rdp_domain_832 = data.get("rdp_domain", {})
-    rdp_local_832 = data.get("rdp_local", {})
+    data.get("rdp_domain", {})
+    data.get("rdp_local", {})
 
     def get_rdp_832(key):
         return get_rdp_setting(data, key)
@@ -3150,7 +2888,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
 
     # Supporting context
     findings_832b.append(
-        f"Windows SAM database stores password hashes (NTLM/NTHash) by default; "
+        "Windows SAM database stores password hashes (NTLM/NTHash) by default; "
         "direct hash content is not extractable from the current JSON."
     )
 
@@ -3191,8 +2929,8 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # [8.3.2.c]
     # -------------------------
 
-    rdp_domain_832c = data.get("rdp_domain", {})
-    rdp_local_832c = data.get("rdp_local", {})
+    data.get("rdp_domain", {})
+    data.get("rdp_local", {})
 
     def get_rdp_832c(key):
         return get_rdp_setting(data, key)
@@ -3672,19 +3410,19 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     event_log_settings = data.get("group_policy", {}).get("event_log_settings", {})
     security_log = event_log_settings.get("Security", {})
     app_log = event_log_settings.get("Application", {})
-    system_log_evt = event_log_settings.get("System", {})
+    event_log_settings.get("System", {})
 
     # Shorthand audit checks already derived at the top of evaluate_from_json:
     # logon_audit, acct_mgmt_audit, priv_use_audit, proc_audit, policy_audit
 
-    object_access_audit = audit_policy.get("Object Access", {})
+    audit_policy.get("Object Access", {})
     system_audit = audit_policy.get("System", {})
     account_logon_audit = audit_policy.get("Account Logon", {}).get(
         "Credential Validation", ""
     )
     acct_lockout_audit = audit_policy.get("Logon/Logoff", {}).get("Account Lockout", "")
     special_logon_audit = audit_policy.get("Logon/Logoff", {}).get("Special Logon", "")
-    security_state_audit = system_audit.get("Security State Change", "")
+    system_audit.get("Security State Change", "")
     security_sys_audit = system_audit.get("Security System Extension", "")
     sys_integrity_audit = system_audit.get("System Integrity", "")
 
@@ -4160,7 +3898,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [10.6.3.b]
     # -------------------------
-    ntp_server_configured = bool(ntp_server_param)
+    bool(ntp_server_param)
     # VMICTimeProvider (Hyper-V time sync) may be reported under different keys
     vmic_provider = (
         time_settings.get("VMICTimeProvider")
@@ -4298,4 +4036,4 @@ def evaluate_from_json(data, all_files, cheat_sheet):
 
 
 if __name__ == "__main__":
-    build_report("windows_output.json", "report.html")
+    build_report("windows_output.json", "report.html", sample_files_folder=None)

@@ -5,10 +5,10 @@
 
 import os
 import re
-import json
 import sys
 import uuid
 import webbrowser
+import logging
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from tkinter import simpledialog
@@ -21,7 +21,7 @@ from linuxReport import load_key_vars_linux
 import windowsReport
 from windowsReport import load_key_vars_windows
 
-MAX_FOLDERS = 6
+MAX_FOLDERS = 20
 REQUIRED_MARKERS = {"windows": "00_Analysis.txt", "linux": "summary.csv"}
 
 def get_base_dir():
@@ -29,6 +29,20 @@ def get_base_dir():
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     return os.path.dirname(os.path.abspath(__file__))
+
+
+# helper to avoid "'str' object has no attribute 'get'" when data is malformed
+def as_dict(x):
+    return x if isinstance(x, dict) else {}
+
+
+# configure error logging to write `log.txt` next to the running exe/script
+LOG_PATH = os.path.join(get_base_dir(), "log.txt")
+logging.basicConfig(
+    filename=LOG_PATH,
+    level=logging.ERROR,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 
 # this makes output land next to the script or the generated exe
@@ -149,9 +163,10 @@ def run_pipeline(sample_folders, progress_callback=None):
             except Exception as e:
                 if progress_callback:
                     progress_callback(f"ERROR parsing Windows folder {folder_name}: {e}")
+                logging.exception("Error parsing Windows folder %s", folder_name)
                 continue
             key_vars = load_key_vars_windows(data)
-            hostname = data.get("systeminfo", {}).get("Host Name") or "Unknown Host"
+            hostname = as_dict(data.get("systeminfo")).get("Host Name") or "Unknown Host"
             slug = slugify(hostname)
             json_path = os.path.join(output_json, f"windows_output_{slug}.json")
             report_path = os.path.join(reports_dir, f"report_{slug}.html")
@@ -167,11 +182,12 @@ def run_pipeline(sample_folders, progress_callback=None):
             except Exception as e:
                 if progress_callback:
                     progress_callback(f"ERROR parsing Linux folder {folder_name}: {e}")
+                logging.exception("Error parsing Linux folder %s", folder_name)
                 continue
             key_vars = load_key_vars_linux(data)
             hostname = (
-                data.get("summary", {}).get("Host")
-                or data.get("uname", {}).get("host")
+                as_dict(data.get("summary")).get("Host")
+                or as_dict(data.get("uname")).get("host")
                 or "Unknown Host"
             )
             slug = slugify(hostname)
@@ -361,25 +377,86 @@ class App(tk.Tk):
                 "Limit Reached", f"Maximum of {MAX_FOLDERS} folders allowed."
             )
             return
-
-        path = filedialog.askdirectory(title="Select host output folder")
-        if not path:
+        # Let the user pick a parent folder, then select one or more folders
+        parent = filedialog.askdirectory(title="Select folder or parent folder to choose from")
+        if not parent:
             return
 
-        valid, reason, os_type = validate_folder(path)
-        if not valid:
+        # If the selected folder already contains required marker files, add it directly.
+        valid, reason, _ = validate_folder(parent)
+        if valid:
+            if parent not in self.folders:
+                self.folders.append(parent)
+                self.folder_listbox.insert(tk.END, parent)
+            return
+
+        # Otherwise, only prompt when there are immediate subfolders to choose from.
+        try:
+            subdirs = [os.path.join(parent, d) for d in os.listdir(parent) if os.path.isdir(os.path.join(parent, d))]
+        except Exception:
+            subdirs = []
+
+        if not subdirs:
             messagebox.showerror(
                 "Invalid Folder",
-                (
-                    f"The selected folder does not appear to contain the required script output files:\n\n{reason}\n\n"
-                    "Each host folder must contain the script output files directly inside it."
-                ),
+                f"{os.path.basename(parent)} does not appear to contain required files:\n\n{reason}",
             )
             return
 
-        if path and path not in self.folders:
-            self.folders.append(path)
-            self.folder_listbox.insert(tk.END, path)
+        # candidates: only the immediate subfolders (exclude the root/parent)
+        entries = subdirs
+
+        # small chooser window with multi-select listbox
+        chooser = tk.Toplevel(self)
+        chooser.title("Select folders to add")
+        chooser.geometry("600x400")
+
+        tk.Label(chooser, text="Select one or more folders to add:").pack(anchor="w", padx=8, pady=(8, 0))
+        listbox = tk.Listbox(chooser, selectmode=tk.EXTENDED, font=("Courier New", 9))
+        scrollbar = tk.Scrollbar(chooser, orient=tk.VERTICAL, command=listbox.yview)
+        listbox.config(yscrollcommand=scrollbar.set)
+        listbox.pack(side="left", fill="both", expand=True, padx=(8,0), pady=8)
+        scrollbar.pack(side="left", fill="y", pady=8)
+
+        # show readable labels but store full paths in a map
+        path_map = []
+        for p in entries:
+            label = os.path.basename(p) or p
+            listbox.insert(tk.END, f"{label} — {p}")
+            path_map.append(p)
+
+        btn_frame = tk.Frame(chooser)
+        btn_frame.pack(fill="x", padx=8, pady=(0,8))
+
+        def on_add_selected():
+            sel = listbox.curselection()
+            added = 0
+            for i in sel:
+                if len(self.folders) >= MAX_FOLDERS:
+                    break
+                p = path_map[i]
+                valid, reason, _ = validate_folder(p)
+                if not valid:
+                    messagebox.showerror(
+                        "Invalid Folder",
+                        f"{os.path.basename(p)} does not appear to contain required files:\n\n{reason}",
+                    )
+                    continue
+                if p not in self.folders:
+                    self.folders.append(p)
+                    self.folder_listbox.insert(tk.END, p)
+                    added += 1
+            chooser.destroy()
+
+        def on_cancel():
+            chooser.destroy()
+
+        tk.Button(btn_frame, text="Add Selected", command=on_add_selected, bg="#0066cc", fg="white", width=14).pack(side="left")
+        tk.Button(btn_frame, text="Cancel", command=on_cancel, width=10).pack(side="left", padx=(8,0))
+
+        chooser.transient(self)
+        chooser.grab_set()
+        self.wait_window(chooser)
 
     def _remove_folder(self):
         sel = self.folder_listbox.curselection()
@@ -467,6 +544,7 @@ class App(tk.Tk):
         except Exception as e:
             # stop the spinner and show the error state in the UI
             self.progress.stop()
+            logging.exception("Build failed while running pipeline")
             self.status_var.set(f"Error: {e}")
             messagebox.showerror("Build Failed", str(e))
 
@@ -518,6 +596,7 @@ class App(tk.Tk):
             with open(index_target, "w", encoding="utf-8") as f:
                 f.write(content)
         except Exception as e:
+            logging.exception("Failed saving index.html for saved report %s", target_dir)
             messagebox.showerror("Save Failed", f"Could not copy index.html: {e}")
             return
 
@@ -612,12 +691,12 @@ if __name__ == "__main__":
 # This rebuilds the .exe with PyInstaller, making sure to include all the necessary data files and hidden imports for the parsers and report modules.
 # Adjust the paths as needed if your project structure differs.
 """
-python -m PyInstaller --onefile --noconsole `
-  --add-data "cheat_sheet.json;." `
-  --add-data "linuxParser.py;." `
-  --add-data "windowsParser.py;." `
-  --add-data "linuxReport.py;." `
-  --add-data "windowsReport.py;." `
+python -m PyInstaller --clean --onedir --noupx --noconsole --log-level=INFO `
+  --add-data 'cheat_sheet.json;.' `
+  --add-data 'linuxParser.py;.' `
+  --add-data 'windowsParser.py;.' `
+  --add-data 'linuxReport.py;.' `
+  --add-data 'windowsReport.py;.' `
   --hidden-import linuxParser `
   --hidden-import windowsParser `
   --hidden-import linuxReport `
