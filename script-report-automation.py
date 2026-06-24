@@ -592,7 +592,7 @@ class App(tk.Tk):
             
             content = content.replace(norm_base + os.sep, "")
             content = content.replace(norm_base_unix + "/", "")
-            content = content.replace(f"file:///{norm_base_unix}/
+            content = content.replace(f"file:///{norm_base_unix}/", "")
 
             index_target = os.path.join(target_dir, "index.html")
             with open(index_target, "w", encoding="utf-8") as f:
