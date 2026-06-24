@@ -23,19 +23,7 @@ jobs:
         pip install pyinstaller
 
     - name: Build Windows EXE
-      run: |
-        pyinstaller --clean --onefile --windowed ^
-          --name "ScriptOutputReportBuilder" ^
-          --add-data "cheat_sheet.json;." ^
-          --add-data "linuxParser.py;." ^
-          --add-data "windowsParser.py;." ^
-          --add-data "linuxReport.py;." ^
-          --add-data "windowsReport.py;." ^
-          --hidden-import linuxParser ^
-          --hidden-import windowsParser ^
-          --hidden-import linuxReport ^
-          --hidden-import windowsReport ^
-          script-report-automation.py
+      run: pyinstaller --clean --onefile --windowed --name "ScriptOutputReportBuilder" --add-data "cheat_sheet.json;." --add-data "linuxParser.py;." --add-data "windowsParser.py;." --add-data "linuxReport.py;." --add-data "windowsReport.py;." --hidden-import linuxParser --hidden-import windowsParser --hidden-import linuxReport --hidden-import windowsReport script-report-automation.py
 
     - name: Upload Windows artifact
       uses: actions/upload-artifact@v4
