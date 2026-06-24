@@ -212,9 +212,9 @@ def render_html(
         def link_or_disabled(href, label, title):
             if href:
                 return f"<a class='nav-btn' href='{html.escape(href)}' title='{html.escape(title)}'>{label}</a>"
-            else:
-                return f"<span class='nav-btn nav-disabled' title='{html.escape(title)}'>{label}</span>"
+            return f"<span class='nav-btn nav-disabled' title='{html.escape(title)}'>{label}</span>"
 
+        # Use simple icons for compact circular buttons
         home_btn = link_or_disabled(home, '🏠︎', 'Home')
         prev_btn = link_or_disabled(prev, '◀︎', 'Previous')
         next_btn = link_or_disabled(nxt, '▶︎', 'Next')
@@ -226,13 +226,12 @@ def render_html(
             return ""
 
         def render_section(title, values):
-            rows = """
-                f"Interactive accounts observed = {join_items(u.get('username') for u in passwd_list if u.get('interactive'))}",
-                    f"Enabled interactive accounts observed: {join_items(u.get('username') for u in enabled_users)}"
-                    f"Potential shared/generic/functional accounts detected: {join_items(suspect_accounts)}"
-                    f"Interactive accounts = {join_items(u.get('username') for u in passwd_list if u.get('interactive'))}",
+            rows = ""
+            for k, v in values.items():
+                val = html.escape(str(v)) if v is not None else "<em>Not Set</em>"
+                rows += (
+                    f"<tr><td><strong>{html.escape(k)}</strong></td><td>{val}</td></tr>"
                 )
-            """
             return f"""
             <div class='kv-card'>
                 <h3>{html.escape(title)}</h3>
@@ -290,19 +289,70 @@ def render_html(
         f.write("    .export-btn { padding: 10px 16px; background: #198754; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }\n")
         f.write("    .export-btn:hover { background: #157347; }\n")
         f.write("    .qsa-response-text { font-size: 0.82em; color: #333; }\n")
-        f.write(""".kv-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px; }
-            .kv-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fafafa; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-            .kv-card h3 { margin-top: 0; margin-bottom: 8px; font-size: 1.05em; color: #333; }
-            .kv-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
-            .kv-table td { border: none; padding: 4px 6px; vertical-align: top; }
-            .kv-table td:first-child { color: #555; width: 55%;}""")
-        f.write("    .floating-nav { position: fixed; right: 18px; bottom: 18px; display: flex; gap: 10px; align-items: center; z-index: 9999; }\n")
-        f.write("    .nav-btn { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: #007bff; color: #fff; text-decoration: none; font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.18); transition: transform 0.12s ease, background 0.12s ease; }\n")
-        f.write("    .nav-btn:hover { transform: translateY(-3px); background: #0056b3; }\n")
-        f.write("    .nav-btn.nav-disabled { background: #dcdcdc; color: #888; cursor: default; pointer-events: none; box-shadow: none; }\n")
-        f.write("</style>\n")
+        f.write("""
+        .kv-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .kv-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fafafa; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .kv-card h3 { margin-top: 0; margin-bottom: 8px; font-size: 1.05em; color: #333; }
+        .kv-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+        .kv-table td { border: none; padding: 4px 6px; vertical-align: top; }
+        .kv-table td:first-child { color: #555; width: 55%; }
+        .filter-bar {
+            display: flex; align-items: center; flex-wrap: wrap;
+            gap: 8px; margin-bottom: 14px; padding: 10px 14px;
+            background: #f5f5f5; border-radius: 8px; border: 1px solid #e0e0e0;
+        }
+        .filter-bar-label { font-weight: 600; font-size: 0.9em; color: #444; margin-right: 4px; }
+        .filter-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 5px 12px; border-radius: 20px; border: 2px solid transparent;
+            cursor: pointer; font-size: 0.85em; font-weight: 600;
+            transition: transform 0.1s ease, box-shadow 0.1s ease; user-select: none;
+        }
+        .filter-chip:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+        .filter-chip.active { border-color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+        .filter-chip .chip-count {
+            background: rgba(0,0,0,0.15); border-radius: 10px; padding: 1px 6px; font-size: 0.82em;
+        }
+        .filter-chip.chip-passed  { background: #c3e6cb; color: #155724; }
+        .filter-chip.chip-failed  { background: #f5c6cb; color: #721c24; }
+        .filter-chip.chip-review  { background: #ffe8b0; color: #856404; }
+        .filter-chip.chip-manual  { background: #d6d8e7; color: #383d72; }
+        .filter-chip.chip-unknown { background: #e0e0e0; color: #444;    }
+        .filter-chip.chip-all     { background: #333;    color: #fff;    }
+        .reset-filter-btn {
+            padding: 5px 12px; background: #dc3545; color: #fff;
+            border: none; border-radius: 4px; cursor: pointer;
+            font-size: 0.82em; display: none;
+        }
+        .reset-filter-btn.visible { display: inline-block; }
+        #noFilterResults { display: none; padding: 18px; text-align: center; color: #888; font-style: italic; }
+        tr.filter-hidden { display: none; }
+        .floating-nav { position: fixed; right: 18px; bottom: 18px; display: flex; gap: 10px; align-items: center; z-index: 9999; }
+        .nav-btn { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: #007bff; color: #fff; text-decoration: none; font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.18); transition: transform 0.12s ease, background 0.12s ease; }
+        .nav-btn:hover { transform: translateY(-3px); background: #0056b3; }
+        .nav-btn.nav-disabled { background: #dcdcdc; color: #888; cursor: default; pointer-events: none; box-shadow: none; }
+    </style>
+    """)
 
-        f.write("<table id='requirementsTable'><thead><tr><th>ID</th><th>Description</th><th>Status</th><th>Files</th><th>Findings</th><th>Look For</th><th>QSA Response</th></tr></thead><tbody>\n")
+        f.write("<div class='filter-bar'>\n")
+        f.write("  <span class='filter-bar-label'>Filter by Status:</span>\n")
+        for chip_status in ["all", "passed", "failed", "review", "manual", "unknown"]:
+            f.write(
+                f"  <button class='filter-chip chip-{chip_status}'"
+                f" data-filter='{chip_status}'"
+                f" onclick='setFilter(\"{chip_status}\")'>"
+                f"{chip_status.title()}"
+                f"  <span class='chip-count' id='count-{chip_status}'>0</span>"
+                f"</button>\n"
+            )
+        f.write(
+            "  <button class='reset-filter-btn' id='resetFilterBtn'"
+            " onclick='setFilter(\"all\")'>&#x2715; Reset Filter</button>\n"
+        )
+        f.write("</div>\n")
+        f.write("<div id='noFilterResults'>No requirements match this filter.</div>\n")
+
+        f.write( "<table id='requirementsTable'><thead><tr><th>ID</th><th>Description</th><th>Status</th><th>Files</th><th>Findings</th><th>Look For</th><th>QSA Response</th></tr></thead><tbody>\n")
         for r in rows:
             f.write(r + "\n")
         f.write("</tbody></table>\n")
@@ -350,11 +400,12 @@ def render_html(
         f.write("    ).filter(cb => cb.checked).map(cb => parseInt(cb.dataset.idx));\n")
         f.write("    if (selected.length === 0) { alert('Please select at least one host.'); return; }\n")
         f.write("    const wb = XLSX.utils.book_new();\n")
-        f.write("    const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','Editor Notes'];\n")
+        f.write("    const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','MIN Comments'];\n")
         f.write("    selected.forEach(idx => {\n")
         f.write("      const host = EXPORT_DATA[idx];\n")
         f.write("      const sheetData = [headers];\n")
         f.write("      host.rows.forEach(row => {\n")
+
         # Build the same localStorage key the report page uses
         f.write("        const reqKey   = 'req_' + row.id.replace(/[^a-zA-Z0-9]/g, '_');\n")
         f.write("        const storeKey = 'zipaudit|' + host.hostname + '|' + reqKey;\n")
@@ -372,6 +423,7 @@ def render_html(
         f.write("            }\n")
         f.write("          } catch(e) {}\n")
         f.write("        }\n")
+
         # Only include QSA response if the current (possibly overridden) status is passed
         f.write("        const qsaText = status === 'passed' ? row.qsa_response : '';\n")
         f.write("        sheetData.push([row.id, row.description, status, row.files, row.findings, row.look_for, qsaText, noteStr]);\n")
@@ -433,7 +485,7 @@ def render_html(
         f.write("                        wrapper.className = 'finding-item editor-note';\n")
         f.write("                        const label = document.createElement('div');\n")
         f.write("                        label.className = 'finding-label';\n")
-        f.write("                        label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(n.timestamp) + ', moved to ' + escapeHtml(n.status) + '):</b>';\n")
+        f.write("                        label.innerHTML = '<b>MIN Comment (' + escapeHtml(n.timestamp) + ', moved to ' + escapeHtml(n.status) + '):</b>';\n")
         f.write("                        const body = document.createElement('div');\n")
         f.write("                        body.innerHTML = escapeHtml(n.note).replace(/\\n/g, '<br>');\n")
         f.write("                        wrapper.appendChild(label);\n")
@@ -448,6 +500,59 @@ def render_html(
 
         f.write("    document.addEventListener('DOMContentLoaded', loadAllRowStates);\n")
         f.write("\n")
+
+        f.write("""
+            // ── Status filter ──────────────────────────────────────────────────
+            let activeFilter = 'all';
+
+            function updateChipCounts() {
+                const allRows = Array.from(document.querySelectorAll('#requirementsTable tbody tr'));
+                const counts = { passed: 0, failed: 0, review: 0, manual: 0, unknown: 0 };
+                allRows.forEach(row => {
+                    const s = row.children[2].innerText.trim().toLowerCase();
+                    if (counts[s] !== undefined) counts[s]++;
+                });
+                let total = 0;
+                Object.values(counts).forEach(v => total += v);
+                const allEl = document.getElementById('count-all');
+                if (allEl) allEl.textContent = total;
+                Object.entries(counts).forEach(([s, n]) => {
+                    const el = document.getElementById('count-' + s);
+                    if (el) el.textContent = n;
+                });
+            }
+
+            function setFilter(status) {
+                activeFilter = status;
+                const allRows = Array.from(document.querySelectorAll('#requirementsTable tbody tr'));
+                allRows.forEach(row => {
+                    if (status === 'all') {
+                        row.classList.remove('filter-hidden');
+                    } else {
+                        const rowStatus = row.children[2].innerText.trim().toLowerCase();
+                        row.classList.toggle('filter-hidden', rowStatus !== status);
+                    }
+                });
+                // update active chip highlight
+                document.querySelectorAll('.filter-chip').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.filter === status);
+                });
+                // show/hide reset button
+                const resetBtn = document.getElementById('resetFilterBtn');
+                if (resetBtn) resetBtn.classList.toggle('visible', status !== 'all');
+                // show empty-state message
+                const visible = allRows.filter(r => !r.classList.contains('filter-hidden'));
+                const noResults = document.getElementById('noFilterResults');
+                if (noResults) noResults.style.display = visible.length === 0 ? 'block' : 'none';
+            }
+
+            // Re-apply filter + recount after a review is saved
+            const _origSaveReview = typeof saveReview === 'function' ? saveReview : null;
+            document.addEventListener('DOMContentLoaded', function() {
+                updateChipCounts();
+                setFilter('all');
+            });
+        """)
 
         f.write("    function resolveFileContent(raw, filename) {\n")
         f.write("        const marker = '__TRUNCATED__:';\n")
@@ -562,7 +667,7 @@ def render_html(
         f.write("            wrapper.className = 'finding-item editor-note';\n")
         f.write("            const label = document.createElement('div');\n")
         f.write("            label.className = 'finding-label';\n")
-        f.write("            label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(timestamp) + ', moved to ' + escapeHtml(status) + '):</b>';\n")
+        f.write("            label.innerHTML = '<b>MIN Comment (' + escapeHtml(timestamp) + ', moved to ' + escapeHtml(status) + '):</b>';\n")
         f.write("            const body = document.createElement('div');\n")
         f.write("            body.innerHTML = escapeHtml(note).replace(/\\n/g, '<br>');\n")
         f.write("            wrapper.appendChild(label);\n")
@@ -572,6 +677,8 @@ def render_html(
         f.write("\n")
         # Persist to localStorage — always, not just when a note is added
         f.write("        saveRowState(row, status, getEditorNotes(row));\n")
+        f.write("        updateChipCounts();\n")
+        f.write("        setFilter(activeFilter);\n")
         f.write("        closeReview();\n")
         f.write("    }\n")
 
@@ -588,7 +695,15 @@ def render_html(
         f.write("      } catch(e) {}\n")
         f.write("    });\n")
         f.write("  }\n")
-        f.write("  document.addEventListener('DOMContentLoaded', applyStoredStatuses);\n")
+
+        f.write("  function adjustHostHeaders(){\n")
+        f.write("    document.querySelectorAll('th .host-header').forEach(el=>{\n")
+        f.write("      el.classList.remove('shrunk'); el.style.fontSize='1em'; el.style.whiteSpace='nowrap'; el.style.wordBreak='normal';\n")
+        f.write("      try{ if (el.scrollWidth > el.clientWidth){ el.style.whiteSpace='normal'; el.style.wordBreak='break-word'; el.classList.add('shrunk'); el.style.fontSize='0.6em'; } }catch(e){}\n")
+        f.write("    });\n")
+        f.write("  }\n")
+        f.write("  document.addEventListener('DOMContentLoaded', function(){ applyStoredStatuses(); adjustHostHeaders(); });\n")
+        f.write("  window.addEventListener('resize', adjustHostHeaders);\n")
         f.write("  window.addEventListener('focus', applyStoredStatuses);\n")
         f.write("  window.addEventListener('storage', applyStoredStatuses);\n")
 
@@ -601,7 +716,7 @@ def render_html(
         f.write("        <select id='fileSelect' onchange='onFileChange.call(this)'></select>\n")
         f.write("    </div>\n")
         f.write("    <textarea id='fileContent' readonly></textarea>\n")
-        f.write("    <label>Editor's Note:</label>\n")
+        f.write("    <label>MIN Comment:</label>\n")
         f.write("    <textarea id='editorNote'></textarea>\n")
         f.write("    <div style='margin-top: 12px;'>\n")
         f.write("        <button onclick='saveReview()' style='padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;'>Save</button>\n")
@@ -1010,7 +1125,7 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         f.write("\n")
         f.write("        const wb      = XLSX.utils.book_new();\n")
         f.write(
-            "        const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','Editor Notes'];\n"
+            "        const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','MIN Comments'];\n"
         )
         f.write("\n")
         f.write("        selected.forEach(idx => {\n")
@@ -1229,49 +1344,52 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [2.2.3.c]
     # -------------------------
-    insecure_defs = cheat_sheet.get("insecure_services_linux", [])
-    detected_categories = set()
 
-    for svc in running_services:
-        name = (svc.get("service") or "").lower()
-        desc = (svc.get("description") or "").lower()
+    # Note: Per feedback from John Jordan, this requirement has been removed as it does not pertain to script outputs
 
-        for insecure in insecure_defs:
-            if any(
-                alias in name or alias in desc for alias in insecure.get("aliases", [])
-            ):
-                detected_categories.add(insecure["name"])
+    # insecure_defs = cheat_sheet.get("insecure_services_linux", [])
+    # detected_categories = set()
 
-    findings_223c = []
+    # for svc in running_services:
+    #     name = (svc.get("service") or "").lower()
+    #     desc = (svc.get("description") or "").lower()
 
-    if detected_categories:
-        findings_223c.append(
-            f"Insecure/high-risk service categories detected: {list(detected_categories)}"
-        )
+    #     for insecure in insecure_defs:
+    #         if any(
+    #             alias in name or alias in desc for alias in insecure.get("aliases", [])
+    #         ):
+    #             detected_categories.add(insecure["name"])
 
-    if len(running_services) > 30:
-        findings_223c.append(
-            "Large number of services suggests possible multi-function host."
-        )
+    # findings_223c = []
 
-    if ssh.get("PermitRootLogin") != "no":
-        findings_223c.append("Root login enabled — indicates weaker security boundary.")
+    # if detected_categories:
+    #     findings_223c.append(
+    #         f"Insecure/high-risk service categories detected: {list(detected_categories)}"
+    #     )
 
-    if not findings_223c:
-        findings_223c.append(
-            "No obvious conflicting security roles detected. Manual validation required."
-        )
+    # if len(running_services) > 30:
+    #     findings_223c.append(
+    #         "Large number of services suggests possible multi-function host."
+    #     )
 
-    add(
-        "[2.2.3.c]",
-        "Provide system configurations to confirm that system functions requiring different security needs are separated or appropriately secured together.",
-        "review",
-        findings_223c,
-        ["1.2.5_running_services.txt", "8.3_sshd_config.txt"],
-        default_file="1.2.5_running_services.txt",
-        look_for="Coexistence of high-risk services with sensitive services or mixed security domains.",
-        qsa_response="QSA reviewed the system configurations, running services, and SSH settings to evaluate whether there were any conflicting primary functions or high-risk services coexisting on the host without proper separation. The review considered the types of services running, their descriptions, and the SSH configuration to assess the security boundaries and whether functions with different security needs were appropriately separated or secured together.",
-    )
+    # if ssh.get("PermitRootLogin") != "no":
+    #     findings_223c.append("Root login enabled — indicates weaker security boundary.")
+
+    # if not findings_223c:
+    #     findings_223c.append(
+    #         "No obvious conflicting security roles detected. Manual validation required."
+    #     )
+
+    # add(
+    #     "[2.2.3.c]",
+    #     "Provide system configurations to confirm that system functions requiring different security needs are separated or appropriately secured together.",
+    #     "review",
+    #     findings_223c,
+    #     ["1.2.5_running_services.txt", "8.3_sshd_config.txt"],
+    #     default_file="1.2.5_running_services.txt",
+    #     look_for="Coexistence of high-risk services with sensitive services or mixed security domains.",
+    #     qsa_response="QSA reviewed the system configurations, running services, and SSH settings to evaluate whether there were any conflicting primary functions or high-risk services coexisting on the host without proper separation. The review considered the types of services running, their descriptions, and the SSH configuration to assess the security boundaries and whether functions with different security needs were appropriately separated or secured together.",
+    # )
 
     # -------------------------
     # [2.2.4.b]
@@ -1719,6 +1837,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["1.2.5_running_services.txt"],
         default_file="1.2.5_running_services.txt",
         look_for="Tamper protection / policy preventing disablement.",
+        qsa_response="QSA reviewed the available evidence to confirm that attempts to disable or remove the anti-malware solution were prevented."
     )
 
     # -------------------------
@@ -1753,6 +1872,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["8.2_enabledusers.txt", "passwd.txt"],
         default_file="8.2_enabledusers.txt",
         look_for="Users/accounts with unnecessary or excessive access.",
+        qsa_response="QSA reviewed the user access settings to confirm that access was based on job/function need. The review focused on the number of local accounts and the members of the wheel group to evaluate whether any users had unnecessary or excessive access privileges.",
     )
 
     # -------------------------
@@ -1769,6 +1889,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["8.2_enabledusers.txt", "passwd.txt"],
         default_file="8.2_enabledusers.txt",
         look_for="Privileged memberships consistent with approved job functions.",
+        qsa_response="QSA reviewed the user access settings to confirm that privileges assigned were based on job function. The review focused on the wheel group and its members to evaluate whether privileged memberships were consistent with approved job functions.",
     )
 
     # -------------------------
@@ -1811,6 +1932,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["8.2_enabledusers.txt", "passwd.txt", "sudoers.txt"],
         default_file="8.2_enabledusers.txt",
         look_for="Documented approvals matching granted access.",
+        qsa_response="QSA reviewed the user IDs and assigned privileges to confirm that documented approval exists. The review focused on the sudoers entries and their associated users to evaluate whether all granted privileges were properly documented and approved."
     )
 
     # -------------------------
@@ -1827,6 +1949,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["8.2_enabledusers.txt", "passwd.txt"],
         default_file="8.2_enabledusers.txt",
         look_for="System/application accounts with interactive shells or elevated access.",
+        qsa_response="QSA reviewed the system settings to confirm that access is managed for each system component. The review focused on the configuration of interactive accounts and wheel group members to evaluate whether access controls were properly implemented."
     )
 
     # -------------------------
@@ -1842,6 +1965,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["8.2_enabledusers.txt", "summary.csv"],
         default_file="8.2_enabledusers.txt",
         look_for="Per-component access management configuration.",
+        qsa_response="QSA reviewed the system settings to confirm that access is managed for each system component. The review focused on the configuration of interactive accounts and wheel group members to evaluate whether access controls were properly implemented."
     )
 
     # -------------------------
@@ -1855,6 +1979,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["8.2_enabledusers.txt", "summary.csv"],
         default_file="8.2_enabledusers.txt",
         look_for="Access control framework settings and enforcement.",
+        qsa_response="QSA reviewed the system settings to confirm that the access control system is configured appropriately. The review focused on the configuration of access control mechanisms and their enforcement to evaluate whether the system was properly secured."
     )
 
     # -------------------------
@@ -1868,6 +1993,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["8.2_enabledusers.txt", "summary.csv"],
         default_file="8.2_enabledusers.txt",
         look_for="Default deny / explicit allow model.",
+        qsa_response="QSA reviewed the system settings to confirm that the access control system is set to default deny access. The review focused on the configuration of access control policies and their enforcement to evaluate whether the system was properly secured with a default-deny posture."
     )
 
     # -------------------------
@@ -1937,6 +2063,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["8.2_enabledusers.txt"],
         default_file="8.2_enabledusers.txt",
         look_for="Named individual accounts rather than shared, generic, or functional users.",
+        qsa_response="QSA reviewed the enabled user accounts to confirm that access to system components and cardholder data can be uniquely identified and associated with individuals. The review focused on ensuring that each account was properly assigned to a specific user and that there were no shared or generic accounts in use."
     )
 
     # -------------------------
@@ -1953,6 +2080,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["passwd.txt", "8.3_sshd_config.txt"],
         default_file="passwd.txt",
         look_for="Generic/shared IDs such as root being used for normal admin access.",
+        qsa_response="QSA reviewed the user account settings to confirm that shared or generic credentials are not used except by exception. The review focused on the configuration of user accounts and their associated permissions to evaluate whether any generic IDs were in use."
     )
 
     # -------------------------
@@ -1997,6 +2125,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["8.2.4_user_changes.txt"],
         default_file="8.2.4_user_changes.txt",
         look_for="User modification evidence tied to approved requests.",
+        qsa_response="QSA reviewed the system settings to confirm that user account activity has been managed. The review focused on recent user/account change events and whether they were tied to approved requests or tickets, ensuring that all changes were authorized and implemented appropriately."
     )
 
     # -------------------------
@@ -2011,6 +2140,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["summary.csv"],
         default_file="summary.csv",
         look_for="Inactive users reported by script.",
+        qsa_response="QSA reviewed the system settings to confirm that inactive user accounts are removed or disabled within 90 days of inactivity. The review focused on the configuration of user accounts and their status to evaluate whether the system was properly managing inactive accounts."
     )
 
     # -------------------------
@@ -2037,6 +2167,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["summary.csv"],
         default_file="summary.csv",
         look_for="TMOUT set to 900 seconds or more.",
+        qsa_response="QSA reviewed the system settings to confirm that idle sessions require re-authentication after no more than 15 minutes. The review focused on the TMOUT value in the summary to evaluate whether it was set to 900 seconds or more, ensuring that idle session timeouts were properly configured."
     )
 
     # -------------------------
@@ -2055,6 +2186,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["summary.csv", "8.3_sshd_config.txt"],
         default_file="8.3_sshd_config.txt",
         look_for="Whether passwords, keys, or directory authentication are in use.",
+        qsa_response="QSA reviewed the system settings to confirm that authentication factors are functional. The review focused on the configuration of authentication mechanisms and their enforcement to evaluate whether the system was properly secured."
     )
 
     # -------------------------
@@ -2899,6 +3031,13 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["10.3.3_logging.txt"],
         default_file="10.3.3_logging.txt",
         look_for="Active rsyslog/syslog forwarding target to central log/SIEM.",
+        qsa_response=(
+            "QSA reviewed the audit log configurations to confirm that audit logs were being backed up "
+            "to a secure, central, internal log server or other difficult-to-modify media. The review "
+            "confirmed that log forwarding was configured and that the system was actively sending logs "
+            "to approved central log targets, ensuring that audit logs were preserved in a secure and "
+            "tamper-resistant manner."
+        )
     )
 
     # -------------------------
@@ -2919,6 +3058,12 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["10.6.1_timesync.txt"],
         default_file="10.6.1_timesync.txt",
         look_for="System clock synchronized = yes and NTP service active.",
+        qsa_response=(
+            "QSA reviewed the time synchronization settings to confirm that system clocks were synchronized "
+            "using approved time-synchronization technology. The review confirmed that the system clocks "
+            "were synchronized with approved NTP servers, ensuring accurate and reliable timekeeping "
+            "consistent with organizational policy."
+        )
     )
 
     # -------------------------
@@ -2932,6 +3077,12 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["10.6.1_timesync.txt"],
         default_file="10.6.1_timesync.txt",
         look_for="Consistent synchronized system time across hosts.",
+        qsa_response=(
+            "QSA reviewed the time synchronization settings to confirm that systems were configured to "
+            "maintain correct and consistent time. The review confirmed that the system clocks were "
+            "synchronized with approved NTP servers, ensuring accurate and reliable timekeeping consistent "
+            "with organizational policy."
+        )
     )
 
     # -------------------------
@@ -2945,6 +3096,11 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["10.6.1_timesync.txt"],
         default_file="10.6.1_timesync.txt",
         look_for="Time synchronization functioning and stable.",
+        qsa_response=(
+            "QSA reviewed the system configurations and time-synchronization settings to confirm that time "
+            "accuracy was maintained. The review confirmed that the system clocks were synchronized with "
+            "approved NTP servers, ensuring accurate and reliable timekeeping consistent with organizational policy."
+        )
     )
 
     # -------------------------
@@ -2961,6 +3117,11 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["10.6.1_timesync.txt"],
         default_file="10.6.1_timesync.txt",
         look_for="Configured central/approved NTP sources.",
+        qsa_response=(
+            "QSA reviewed the system configurations and time-source settings to confirm that the time source "
+            "was configured securely. The review confirmed that the system was synchronized with approved "
+            "NTP servers, ensuring accurate and reliable timekeeping consistent with organizational policy."
+        )
     )
 
     # -------------------------

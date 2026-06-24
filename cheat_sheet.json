@@ -222,7 +222,7 @@
     },
     {
         "name": "Palo Alto Cortex XDR",
-        "aliases": ["CyveraService", "traps", "traps_pmd"]
+        "aliases": ["CyveraService", "traps", "traps_pmd", "cortex-xdr-payload", "cyserver"]
     },
     {
         "name": "Carbon Black",

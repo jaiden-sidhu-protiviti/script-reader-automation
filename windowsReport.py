@@ -526,17 +526,68 @@ def render_html(
         f.write("    .export-btn { padding: 10px 16px; background: #198754; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; }\n")
         f.write("    .export-btn:hover { background: #157347; }\n")
         f.write("    .qsa-response-text { font-size: 0.82em; color: #333; }\n")
-        f.write(""".kv-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px; }
-            .kv-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fafafa; box-shadow: 0 1px 3px rgba(0,0,0,0.08);}
-            .kv-card h3 { margin-top: 0; margin-bottom: 8px; font-size: 1.05em; color: #333; }
-            .kv-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
-            .kv-table td { border: none; padding: 4px 6px; vertical-align: top; }
-            .kv-table td:first-child { color: #555; width: 55%; } """)
-        f.write("    .floating-nav { position: fixed; right: 18px; bottom: 18px; display: flex; gap: 10px; align-items: center; z-index: 9999; }\n")
-        f.write("    .nav-btn { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: #007bff; color: #fff; text-decoration: none; font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.18); transition: transform 0.12s ease, background 0.12s ease; }\n")
-        f.write("    .nav-btn:hover { transform: translateY(-3px); background: #0056b3; }\n")
-        f.write("    .nav-btn.nav-disabled { background: #dcdcdc; color: #888; cursor: default; pointer-events: none; box-shadow: none; }\n")
-        f.write("</style>\n")
+        f.write("""
+        .kv-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .kv-card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; background: #fafafa; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .kv-card h3 { margin-top: 0; margin-bottom: 8px; font-size: 1.05em; color: #333; }
+        .kv-table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+        .kv-table td { border: none; padding: 4px 6px; vertical-align: top; }
+        .kv-table td:first-child { color: #555; width: 55%; }
+        .filter-bar {
+            display: flex; align-items: center; flex-wrap: wrap;
+            gap: 8px; margin-bottom: 14px; padding: 10px 14px;
+            background: #f5f5f5; border-radius: 8px; border: 1px solid #e0e0e0;
+        }
+        .filter-bar-label { font-weight: 600; font-size: 0.9em; color: #444; margin-right: 4px; }
+        .filter-chip {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 5px 12px; border-radius: 20px; border: 2px solid transparent;
+            cursor: pointer; font-size: 0.85em; font-weight: 600;
+            transition: transform 0.1s ease, box-shadow 0.1s ease; user-select: none;
+        }
+        .filter-chip:hover { transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.15); }
+        .filter-chip.active { border-color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+        .filter-chip .chip-count {
+            background: rgba(0,0,0,0.15); border-radius: 10px; padding: 1px 6px; font-size: 0.82em;
+        }
+        .filter-chip.chip-passed  { background: #c3e6cb; color: #155724; }
+        .filter-chip.chip-failed  { background: #f5c6cb; color: #721c24; }
+        .filter-chip.chip-review  { background: #ffe8b0; color: #856404; }
+        .filter-chip.chip-manual  { background: #d6d8e7; color: #383d72; }
+        .filter-chip.chip-unknown { background: #e0e0e0; color: #444;    }
+        .filter-chip.chip-all     { background: #333;    color: #fff;    }
+        .reset-filter-btn {
+            padding: 5px 12px; background: #dc3545; color: #fff;
+            border: none; border-radius: 4px; cursor: pointer;
+            font-size: 0.82em; display: none;
+        }
+        .reset-filter-btn.visible { display: inline-block; }
+        #noFilterResults { display: none; padding: 18px; text-align: center; color: #888; font-style: italic; }
+        tr.filter-hidden { display: none; }
+        .floating-nav { position: fixed; right: 18px; bottom: 18px; display: flex; gap: 10px; align-items: center; z-index: 9999; }
+        .nav-btn { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 50%; background: #007bff; color: #fff; text-decoration: none; font-size: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.18); transition: transform 0.12s ease, background 0.12s ease; }
+        .nav-btn:hover { transform: translateY(-3px); background: #0056b3; }
+        .nav-btn.nav-disabled { background: #dcdcdc; color: #888; cursor: default; pointer-events: none; box-shadow: none; }
+    </style>
+    """)
+
+        f.write("<div class='filter-bar'>\n")
+        f.write("  <span class='filter-bar-label'>Filter by Status:</span>\n")
+        for chip_status in ["all", "passed", "failed", "review", "manual", "unknown"]:
+            f.write(
+                f"  <button class='filter-chip chip-{chip_status}'"
+                f" data-filter='{chip_status}'"
+                f" onclick='setFilter(\"{chip_status}\")'>"
+                f"{chip_status.title()}"
+                f"  <span class='chip-count' id='count-{chip_status}'>0</span>"
+                f"</button>\n"
+            )
+        f.write(
+            "  <button class='reset-filter-btn' id='resetFilterBtn'"
+            " onclick='setFilter(\"all\")'>&#x2715; Reset Filter</button>\n"
+        )
+        f.write("</div>\n")
+        f.write("<div id='noFilterResults'>No requirements match this filter.</div>\n")
 
         f.write( "<table id='requirementsTable'><thead><tr><th>ID</th><th>Description</th><th>Status</th><th>Files</th><th>Findings</th><th>Look For</th><th>QSA Response</th></tr></thead><tbody>\n")
         for r in rows:
@@ -586,7 +637,7 @@ def render_html(
         f.write("    ).filter(cb => cb.checked).map(cb => parseInt(cb.dataset.idx));\n")
         f.write("    if (selected.length === 0) { alert('Please select at least one host.'); return; }\n")
         f.write("    const wb = XLSX.utils.book_new();\n")
-        f.write("    const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','Editor Notes'];\n")
+        f.write("    const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','MIN Comments'];\n")
         f.write("    selected.forEach(idx => {\n")
         f.write("      const host = EXPORT_DATA[idx];\n")
         f.write("      const sheetData = [headers];\n")
@@ -671,7 +722,7 @@ def render_html(
         f.write("                        wrapper.className = 'finding-item editor-note';\n")
         f.write("                        const label = document.createElement('div');\n")
         f.write("                        label.className = 'finding-label';\n")
-        f.write("                        label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(n.timestamp) + ', moved to ' + escapeHtml(n.status) + '):</b>';\n")
+        f.write("                        label.innerHTML = '<b>MIN Comment (' + escapeHtml(n.timestamp) + ', moved to ' + escapeHtml(n.status) + '):</b>';\n")
         f.write("                        const body = document.createElement('div');\n")
         f.write("                        body.innerHTML = escapeHtml(n.note).replace(/\\n/g, '<br>');\n")
         f.write("                        wrapper.appendChild(label);\n")
@@ -686,6 +737,59 @@ def render_html(
 
         f.write("    document.addEventListener('DOMContentLoaded', loadAllRowStates);\n")
         f.write("\n")
+
+        f.write("""
+            // ── Status filter ──────────────────────────────────────────────────
+            let activeFilter = 'all';
+
+            function updateChipCounts() {
+                const allRows = Array.from(document.querySelectorAll('#requirementsTable tbody tr'));
+                const counts = { passed: 0, failed: 0, review: 0, manual: 0, unknown: 0 };
+                allRows.forEach(row => {
+                    const s = row.children[2].innerText.trim().toLowerCase();
+                    if (counts[s] !== undefined) counts[s]++;
+                });
+                let total = 0;
+                Object.values(counts).forEach(v => total += v);
+                const allEl = document.getElementById('count-all');
+                if (allEl) allEl.textContent = total;
+                Object.entries(counts).forEach(([s, n]) => {
+                    const el = document.getElementById('count-' + s);
+                    if (el) el.textContent = n;
+                });
+            }
+
+            function setFilter(status) {
+                activeFilter = status;
+                const allRows = Array.from(document.querySelectorAll('#requirementsTable tbody tr'));
+                allRows.forEach(row => {
+                    if (status === 'all') {
+                        row.classList.remove('filter-hidden');
+                    } else {
+                        const rowStatus = row.children[2].innerText.trim().toLowerCase();
+                        row.classList.toggle('filter-hidden', rowStatus !== status);
+                    }
+                });
+                // update active chip highlight
+                document.querySelectorAll('.filter-chip').forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.filter === status);
+                });
+                // show/hide reset button
+                const resetBtn = document.getElementById('resetFilterBtn');
+                if (resetBtn) resetBtn.classList.toggle('visible', status !== 'all');
+                // show empty-state message
+                const visible = allRows.filter(r => !r.classList.contains('filter-hidden'));
+                const noResults = document.getElementById('noFilterResults');
+                if (noResults) noResults.style.display = visible.length === 0 ? 'block' : 'none';
+            }
+
+            // Re-apply filter + recount after a review is saved
+            const _origSaveReview = typeof saveReview === 'function' ? saveReview : null;
+            document.addEventListener('DOMContentLoaded', function() {
+                updateChipCounts();
+                setFilter('all');
+            });
+        """)
 
         f.write("    function resolveFileContent(raw, filename) {\n")
         f.write("        const marker = '__TRUNCATED__:';\n")
@@ -800,7 +904,7 @@ def render_html(
         f.write("            wrapper.className = 'finding-item editor-note';\n")
         f.write("            const label = document.createElement('div');\n")
         f.write("            label.className = 'finding-label';\n")
-        f.write("            label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(timestamp) + ', moved to ' + escapeHtml(status) + '):</b>';\n")
+        f.write("            label.innerHTML = '<b>MIN Comment (' + escapeHtml(timestamp) + ', moved to ' + escapeHtml(status) + '):</b>';\n")
         f.write("            const body = document.createElement('div');\n")
         f.write("            body.innerHTML = escapeHtml(note).replace(/\\n/g, '<br>');\n")
         f.write("            wrapper.appendChild(label);\n")
@@ -810,6 +914,8 @@ def render_html(
         f.write("\n")
         # Persist to localStorage — always, not just when a note is added
         f.write("        saveRowState(row, status, getEditorNotes(row));\n")
+        f.write("        updateChipCounts();\n")
+        f.write("        setFilter(activeFilter);\n")
         f.write("        closeReview();\n")
         f.write("    }\n")
 
@@ -847,7 +953,7 @@ def render_html(
         f.write("        <select id='fileSelect' onchange='onFileChange.call(this)'></select>\n")
         f.write("    </div>\n")
         f.write("    <textarea id='fileContent' readonly></textarea>\n")
-        f.write("    <label>Editor's Note:</label>\n")
+        f.write("    <label>MIN Comment:</label>\n")
         f.write("    <textarea id='editorNote'></textarea>\n")
         f.write("    <div style='margin-top: 12px;'>\n")
         f.write("        <button onclick='saveReview()' style='padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;'>Save</button>\n")
@@ -992,6 +1098,7 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         body { font-family: Arial, sans-serif; margin: 24px; }
         table { border-collapse: collapse; width: 100%; table-layout: fixed; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: middle; }
+        th { background: #333; color: #fff; }
         th:first-child, td:first-child { text-align: left; }
                 
         .passed { background: #e5f7eb; }
@@ -1005,6 +1112,83 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         /* Host column header: allow wrapping and dynamic font-shrink when content overflows */
         .host-header { display:block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .host-header.shrunk { white-space: normal; word-break: break-word; }
+                
+        /* ── expandable rows ── */
+        .expand-btn {
+            background: none; border: 1px solid #999; border-radius: 4px;
+            cursor: pointer; font-size: 0.78em; padding: 2px 7px; color: #555;
+            line-height: 1.4;
+        }
+        .expand-btn:hover { background: #eee; }
+        tr.expanded-parent td { border-bottom: none; }
+        .expansion-row td {
+            background: #f9f9fb; border-top: none;
+            padding: 10px 14px 14px;
+        }
+        .expansion-row.exp-hidden { display: none; }
+        .expansion-inner { display: flex; flex-wrap: wrap; gap: 12px; }
+        .expansion-host-card {
+            flex: 1 1 260px; border: 1px solid #ddd; border-radius: 6px;
+            padding: 10px 12px; background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.07);
+        }
+        .expansion-host-card h4 {
+            margin: 0 0 6px; font-size: 0.9em; color: #333;
+            border-bottom: 1px solid #eee; padding-bottom: 4px;
+        }
+        .expansion-findings { font-size: 0.82em; color: #555; margin-bottom: 8px; max-height: 120px; overflow-y: auto; word-break: break-word; overflow-wrap: anywhere; }
+        .expansion-finding-item { margin-bottom: 0.6em; font-size: 0.82em; color: #444; }
+        .expansion-finding-label { margin-bottom: 0.2em; }
+        .expansion-finding-snippet {
+            margin: 0.2em 0 0; font-family: 'Courier New', Courier, monospace;
+            background: #f7f7f7; padding: 4px 6px; border-radius: 3px;
+            white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.9em;
+        }
+        .expansion-finding-file { font-size: 0.85em; color: #666; margin-top: 0.15em; }
+        .inline-status-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+        .inline-status-select {
+            font-size: 0.82em; padding: 3px 6px; border-radius: 4px; border: 1px solid #ccc;
+        }
+        .inline-save-btn {
+            font-size: 0.78em; padding: 3px 10px; background: #198754; color: #fff;
+            border: none; border-radius: 4px; cursor: pointer;
+        }
+        .inline-save-btn:hover { background: #157347; }
+        .inline-status-badge {
+            display: inline-block; padding: 2px 8px; border-radius: 10px;
+            font-size: 0.8em; font-weight: 600;
+        }
+        .badge-passed  { background: #c3e6cb; color: #155724; }
+        .badge-failed  { background: #f5c6cb; color: #721c24; }
+        .badge-review  { background: #ffe8b0; color: #856404; }
+        .badge-manual  { background: #d6d8e7; color: #383d72; }
+        .badge-unknown { background: #e0e0e0; color: #444;    }
+                
+        /* ── horizontal scroll wrapper ── */
+        .table-scroll-wrap {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+        }
+        .table-scroll-wrap table {
+            min-width: 700px;   /* start scrolling below this */
+            width: max-content; /* let table grow naturally   */
+        }
+        .table-scroll-wrap thead th:first-child,
+        .table-scroll-wrap tbody td:first-child {
+            position: sticky;
+            left: 0;
+            z-index: 3;
+            background: #ffffff;
+        }
+        .table-scroll-wrap thead th:first-child { background: #333; z-index: 4; }
+        /* min column width so host names don't collapse too small */
+        .table-scroll-wrap th,
+        .table-scroll-wrap td { min-width: 110px; }
+        .table-scroll-wrap th:first-child,
+        .table-scroll-wrap td:first-child { min-width: 180px; max-width: 250px; background: #ffffff; z-index: 3; }
+        .table-scroll-wrap thead th:first-child { background: #333; z-index: 4; }
                 
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 1000; justify-content: center; align-items: center; }
         .modal-overlay.open { display: flex; }
@@ -1044,6 +1228,7 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
             f.write(f"<span class='{cls}'>{cls}</span>")
         f.write("</div>\n")
 
+        f.write("<div class='table-scroll-wrap'>\n")
         f.write("<table>\n")
         f.write("<thead><tr><th>Requirement</th>")
         for site in site_reports:
@@ -1055,23 +1240,59 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
             else:
                 os_label = "Unknown"
             col_header = f"{site['hostname']} ({os_label})"
-            f.write(f"<th><div class='host-header'>{html.escape(col_header)}</div></th>")
+            report_href = html.escape(site['report_path'])
+            f.write(
+                f"<th><div class='host-header'>"
+                f"<a href='{report_href}' style='color:#fff;text-decoration:underline dotted;'"
+                f" title='Open report for {html.escape(col_header)}'>"
+                f"{html.escape(col_header)}</a>"
+                f"</div></th>"
+            )
         f.write("</tr></thead>\n<tbody>\n")
 
+        def safe_html(text):
+            """Escape HTML but preserve <b>, </b>, <br>, <i>, </i>, <code>, </code>."""
+            import re
+            # Pull out the allowed tags first, replace with placeholders
+            allowed = {}
+            def stash(m):
+                key = f"\x00TAG{len(allowed)}\x00"
+                allowed[key] = m.group(0)
+                return key
+            # Only allow these specific tags through
+            pattern = re.compile(
+                r'<(/?)(\s*)(b|br|i|code|strong|em)(\s*)(/?)\s*>',
+                re.IGNORECASE
+            )
+            stashed = pattern.sub(stash, text)
+            # Now escape everything else
+            escaped = html.escape(stashed)
+            # Restore the stashed tags
+            for key, tag in allowed.items():
+                escaped = escaped.replace(html.escape(key), tag)
+            return escaped
+
         for req_id in all_req_ids:
-            f.write("<tr>")
+            exp_id = "exp_" + "".join(ch if ch.isalnum() else "_" for ch in req_id)
+            req_id_link = "req_" + "".join(ch if ch.isalnum() else "_" for ch in req_id)
+
+            # ── data row ──────────────────────────────────────────────────────
+            f.write(f"<tr class='data-row' id='row_{exp_id}'>")
             f.write(
-                f"<td><b>{html.escape(req_id)}</b><br><small>{html.escape(req_desc.get(req_id, ''))}</small></td>"
+                f"<td>"
+                f"<b>{html.escape(req_id)}</b><br>"
+                f"<small>{html.escape(req_desc.get(req_id, ''))}</small><br>"
+                f"<button class='expand-btn' onclick='toggleExpansion(\"{exp_id}\")'>"
+                f"&#9660; Details</button>"
+                f"</td>"
             )
             for site in site_reports:
                 host = site["hostname"]
                 entry = matrix[req_id].get(host)
                 if entry:
                     status = entry.get("status", "unknown")
-                    href = f"{site['report_path']}#{req_anchor(req_id)}"
-                    row_id = "req_" + "".join(
-                        ch if ch.isalnum() else "_" for ch in req_id
-                    )
+                    href = f"{site['report_path']}#{req_id_link}"
+                    row_id = "req_" + "".join(ch if ch.isalnum() else "_" for ch in req_id)
                     f.write(
                         f"<td class='{html.escape(status)}' "
                         f"data-host='{html.escape(host)}' "
@@ -1081,10 +1302,80 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
                     )
                 else:
                     f.write("<td class='unknown'>n/a</td>")
-            f.write("</tr>\n")
+            f.write("</tr>\n")  # close data row
 
-        f.write("</tbody>\n</table>\n</div>\n")  # close table-wrap
-        f.write("</div>\n")  # close container
+            # ── expansion row ─────────────────────────────────────────────────
+            expansion_cells = (
+                f"<td style='background:#f9f9fb; border-top:none; padding:0; vertical-align:top;'>"
+                f"<b style='display:block;padding:4px 6px;font-size:0.75em;color:#999'>Requirement</b>"
+                f"</td>"
+            )
+            for site in site_reports:
+                host = site["hostname"]
+                entry = matrix[req_id].get(host)
+                req_key = "req_" + "".join(ch if ch.isalnum() else "_" for ch in req_id)
+                safe_host = html.escape(host)
+                safe_req_key = html.escape(req_key)
+                host_id = html.escape(host.replace(" ", "_"))
+
+                if entry:
+                    status = html.escape(entry.get("status", "unknown"))
+                    findings_parts = []
+                    for fi in entry.get("findings", []):
+                        if isinstance(fi, dict):
+                            message_html = safe_html(fi.get("message", "")).replace("\n", "<br>")
+                            file_part = ""
+                            if fi.get("file"):
+                                file_part += f"<div class='expansion-finding-file'>File: {html.escape(fi['file'])}</div>"
+                            if fi.get("line"):
+                                file_part += f"<pre class='expansion-finding-snippet'>{html.escape(fi['line'])}</pre>"
+                            findings_parts.append(
+                                f"<div class='expansion-finding-item'>"
+                                f"<div class='expansion-finding-label'>{message_html}</div>"
+                                f"{file_part}</div>"
+                            )
+                        else:
+                            findings_parts.append(
+                                f"<div class='expansion-finding-item'>"
+                                f"{safe_html(str(fi)).replace(chr(10), '<br>')}</div>"
+                            )
+                    findings_text = "".join(findings_parts) if findings_parts else "<em>None</em>"
+                    report_href = html.escape(f"{site['report_path']}#{req_key}")
+                    expansion_cells += (
+                        f"<td style='background:#f9f9fb; border-top:none; padding:8px; vertical-align:top; max-width:250px; overflow:hidden;:'>"
+                        f"<div class='expansion-host-card' id='card_{exp_id}_{host_id}'"
+                        f" style='min-width:unset;flex:unset;'>"
+                        f"<h4>{safe_host}&nbsp;"
+                        f"<span class='inline-status-badge badge-{status}'"
+                        f" id='badge_{exp_id}_{host_id}'>{status}</span>"
+                        f"&nbsp;<a href='{report_href}' style='font-size:0.8em;'>&#128279;</a></h4>"
+                        f"<div class='expansion-findings'>{findings_text}</div>"
+                        f"<div class='inline-status-row'>"
+                        f"<select class='inline-status-select' id='sel_{exp_id}_{host_id}'>"
+                        f"<option>passed</option><option>failed</option>"
+                        f"<option>review</option><option>manual</option><option>unknown</option>"
+                        f"</select>"
+                        f"<button class='inline-save-btn'"
+                        f" onclick='inlineSave(\"{exp_id}\",\"{safe_host}\",\"{safe_req_key}\")'>"
+                        f"Save</button></div></div></td>"
+                    )
+                else:
+                    expansion_cells += (
+                        f"<td style='background:#f9f9fb; border-top:none; padding:8px; vertical-align:top; max-width:250px; overflow:hidden;:'>"
+                        f"<div class='expansion-host-card' style='min-width:unset;flex:unset;'>"
+                        f"<h4>{safe_host}</h4>"
+                        f"<div class='expansion-findings'><em>Not applicable</em></div>"
+                        f"</div></td>"
+                    )
+
+            f.write(
+                f"<tr class='expansion-row exp-hidden' id='{exp_id}'>"
+                f"{expansion_cells}</tr>\n"
+            )
+
+        f.write("</tbody>\n</table>\n")
+        f.write("</div>\n")   # close table-scroll-wrap
+        f.write("</div>\n")   # close container
 
         f.write("<div id='exportModal' class='modal-overlay'>\n")
         f.write("  <div class='modal-box'>\n")
@@ -1165,7 +1456,7 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         f.write("        if (selected.length === 0) { alert('Please select at least one host.'); return; }\n")
         f.write("\n")
         f.write("        const wb      = XLSX.utils.book_new();\n")
-        f.write("        const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','Editor Notes'];\n")
+        f.write("        const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','MIN Comments'];\n")
         f.write("\n")
         f.write("        selected.forEach(idx => {\n")
         f.write("            const host      = EXPORT_DATA[idx];\n")
@@ -1214,12 +1505,102 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         f.write("        document.getElementById('exportModal').style.display = 'none';\n")
         f.write("    }\n")
 
+        f.write("""
+        // ── Expand / collapse rows ────────────────────────────────────────────
+        function toggleExpansion(expId) {
+            const expRow = document.getElementById(expId);
+            const dataRow = document.getElementById('row_' + expId);
+            if (!expRow) return;
+            const isHidden = expRow.classList.contains('exp-hidden');
+            expRow.classList.toggle('exp-hidden', !isHidden);
+            dataRow && dataRow.classList.toggle('expanded-parent', isHidden);
+            // update button text
+            const btn = dataRow && dataRow.querySelector('.expand-btn');
+            if (btn) btn.innerHTML = isHidden ? '&#9650; Details' : '&#9660; Details';
+            // pre-fill selects from localStorage when opening
+            if (isHidden) {
+            expRow.querySelectorAll('.inline-status-select').forEach(sel => {
+                const hostKey  = sel.id.replace('sel_' + expId + '_', '').replace(/_/g, ' ');
+                // try both raw and underscore-normalised host keys
+                let found = false;
+                EXPORT_DATA.forEach(hostData => {
+                const reqKey  = sel.closest('.expansion-host-card')
+                                    .querySelector('.inline-save-btn')
+                                    .getAttribute('onclick')
+                                    .match(/"([^"]+)"\s*\)$/)[1];
+                const storeKey = 'zipaudit|' + hostData.hostname + '|' + reqKey;
+                const raw = localStorage.getItem(storeKey);
+                if (raw && !found) {
+                    try {
+                    const saved = JSON.parse(raw);
+                    if (saved.status) { sel.value = saved.status; found = true; }
+                    } catch(e) {}
+                }
+                });
+            });
+            }
+        }
+
+        // ── Inline status save from homepage expansion ────────────────────────
+        function inlineSave(expId, host, reqKey) {
+            const safeHost = host.replace(/ /g, '_');
+            const sel = document.getElementById('sel_' + expId + '_' + safeHost);
+            if (!sel) return;
+            const newStatus = sel.value;
+            const storeKey = 'zipaudit|' + host + '|' + reqKey;
+            // load existing notes so we don't wipe them
+            let existing = { status: newStatus, notes: [] };
+            try {
+            const raw = localStorage.getItem(storeKey);
+            if (raw) { const p = JSON.parse(raw); existing.notes = p.notes || []; }
+            } catch(e) {}
+            existing.status = newStatus;
+            localStorage.setItem(storeKey, JSON.stringify(existing));
+            window.dispatchEvent(new StorageEvent('storage', { key: storeKey }));
+            // update badge in the card
+            const badge = document.getElementById('badge_' + expId + '_' + safeHost);
+            if (badge) {
+            badge.textContent = newStatus;
+            badge.className = 'inline-status-badge badge-' + newStatus;
+            }
+            // update the matrix cell
+            document.querySelectorAll('tbody td[data-host][data-req]').forEach(td => {
+            if (td.dataset.host === host && td.dataset.req === reqKey) {
+                td.className = newStatus;
+                const a = td.querySelector('a.cell-link');
+                if (a) a.textContent = newStatus;
+            }
+            });
+            showToast('Status saved: ' + newStatus);
+        }
+        """)
+
         # Close modal on backdrop click
         f.write("  document.getElementById('exportModal').addEventListener('click', function(e) {\n")
         f.write("    if (e.target === this) closeExportModal();\n")
         f.write("  });\n")
-
-        f.write("</script>\n")
+        f.write("""
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            if (!t) return;
+            t.textContent = msg;
+            t.style.opacity = '1'; t.style.transform = 'translateY(0)';
+            clearTimeout(t._timer);
+            t._timer = setTimeout(() => {
+            t.style.opacity = '0'; t.style.transform = 'translateY(10px)';
+            }, 2500);
+        }
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeExportModal();
+        });
+        """)
+        f.write("</script>\n")   # ONE closing script tag
+        f.write("<div id='toast' style='"
+                "position:fixed;bottom:24px;right:24px;background:#323232;color:#fff;"
+                "padding:10px 20px;border-radius:6px;font-size:0.9em;z-index:9999;"
+                "opacity:0;transform:translateY(10px);"
+                "transition:opacity 0.3s ease,transform 0.3s ease;pointer-events:none;'"
+                "></div>\n")
         f.write("</body>\n</html>\n")
 
 
@@ -1480,57 +1861,60 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [2.2.3.c]
     # -------------------------
-    insecure_defs = cheat_sheet.get("insecure_services_windows", [])
-    detected_categories = set()
 
-    for svc in running_services:
-        name = (svc.get("service") or "").lower()
-        desc = (svc.get("description") or "").lower()
+    # Note: Per feedback from John Jordan, this requirement has been removed as it does not pertain to script outputs
+    
+    # insecure_defs = cheat_sheet.get("insecure_services_windows", [])
+    # detected_categories = set()
 
-        for insecure in insecure_defs:
-            if any(
-                alias in name or alias in desc for alias in insecure.get("aliases", [])
-            ):
-                detected_categories.add(insecure["name"])
+    # for svc in running_services:
+    #     name = (svc.get("service") or "").lower()
+    #     desc = (svc.get("description") or "").lower()
 
-    findings_223c = []
+    #     for insecure in insecure_defs:
+    #         if any(
+    #             alias in name or alias in desc for alias in insecure.get("aliases", [])
+    #         ):
+    #             detected_categories.add(insecure["name"])
 
-    if detected_categories:
-        findings_223c.append(
-            f"Insecure/high-risk service categories detected: {list(detected_categories)}"
-        )
+    # findings_223c = []
 
-    if len(running_services) > 30:
-        findings_223c.append(
-            "Large number of services suggests possible multi-function host."
-        )
+    # if detected_categories:
+    #     findings_223c.append(
+    #         f"Insecure/high-risk service categories detected: {list(detected_categories)}"
+    #     )
 
-    if not nla_enabled:
-        findings_223c.append(
-            "RDP NLA is not enabled - indicates a weaker remote access security boundary."
-        )
+    # if len(running_services) > 30:
+    #     findings_223c.append(
+    #         "Large number of services suggests possible multi-function host."
+    #     )
 
-    if not findings_223c:
-        findings_223c.append(
-            "No obvious conflicting security roles detected. Manual validation required."
-        )
+    # if not nla_enabled:
+    #     findings_223c.append(
+    #         "RDP NLA is not enabled - indicates a weaker remote access security boundary."
+    #     )
 
-    add(
-        "[2.2.3.c]",
-        "Provide system configurations to confirm that system functions requiring different security needs are separated or appropriately secured together.",
-        "review",
-        findings_223c,
-        ["09_Services_Details.csv", "05_GroupPolicy.txt"],
-        default_file="09_Services_Details.csv",
-        look_for="Coexistence of high-risk services with sensitive services or mixed security domains.",
-        qsa_response=(
-            "QSA reviewed the system configurations, running services, and RDP settings to evaluate whether "
-            "there were any conflicting primary functions or high-risk services coexisting on the host without "
-            "proper separation. The review considered the types of services running, their descriptions, and "
-            "the RDP configuration including NLA status to assess the security boundaries and whether functions "
-            "with different security needs were appropriately separated or secured together."
-        ),
-    )
+    # if not findings_223c:
+    #     findings_223c.append(
+    #         "No obvious conflicting security roles detected. Manual validation required."
+    #     )
+
+    # add(
+    #     "[2.2.3.c]",
+    #     "Provide system configurations to confirm that system functions requiring different security needs are separated or appropriately secured together.",
+    #     "review",
+    #     findings_223c,
+    #     ["09_Services_Details.csv", "05_GroupPolicy.txt"],
+    #     default_file="09_Services_Details.csv",
+    #     look_for="Coexistence of high-risk services with sensitive services or mixed security domains.",
+    #     qsa_response=(
+    #         "QSA reviewed the system configurations, running services, and RDP settings to evaluate whether "
+    #         "there were any conflicting primary functions or high-risk services coexisting on the host without "
+    #         "proper separation. The review considered the types of services running, their descriptions, and "
+    #         "the RDP configuration including NLA status to assess the security boundaries and whether functions "
+    #         "with different security needs were appropriately separated or secured together."
+    #     ),
+    # )
 
     # -------------------------
     # [2.2.4.b]
