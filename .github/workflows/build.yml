@@ -1,0 +1,81 @@
+name: Build App (Windows + Mac)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      run: |
+        pip install pyinstaller
+
+    - name: Build Windows EXE
+      run: |
+        pyinstaller --clean --onefile --windowed ^
+          --name "ScriptOutputReportBuilder" ^
+          --add-data "cheat_sheet.json;." ^
+          --add-data "linuxParser.py;." ^
+          --add-data "windowsParser.py;." ^
+          --add-data "linuxReport.py;." ^
+          --add-data "windowsReport.py;." ^
+          --hidden-import linuxParser ^
+          --hidden-import windowsParser ^
+          --hidden-import linuxReport ^
+          --hidden-import windowsReport ^
+          script-report-automation.py
+
+    - name: Upload Windows artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: windows-build
+        path: dist/
+
+  build-mac:
+    runs-on: macos-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.11"
+
+    - name: Install dependencies
+      run: |
+        pip install pyinstaller
+
+    - name: Build Mac App
+      run: |
+        pyinstaller --clean --onedir --windowed \
+          --name "ScriptOutputReportBuilder" \
+          --add-data "cheat_sheet.json:." \
+          --add-data "linuxParser.py:." \
+          --add-data "windowsParser.py:." \
+          --add-data "linuxReport.py:." \
+          --add-data "windowsReport.py:." \
+          --hidden-import linuxParser \
+          --hidden-import windowsParser \
+          --hidden-import linuxReport \
+          --hidden-import windowsReport \
+          script-report-automation.py
+
+    - name: Upload Mac artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: mac-build
+        path: dist/
