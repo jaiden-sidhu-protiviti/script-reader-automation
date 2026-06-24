@@ -9,7 +9,7 @@ The tool processes host evidence folders, converts raw script outputs into a nor
 - a combined `index.html` homepage,
 - supporting JSON artifacts in `output_json/`.
 
-This project is intended for audit and control review workflows, not for active vulnerability scanning.
+This project is intended for audit and control review workflows, not for active vulnerability scanning. test change
 
 ---
 
