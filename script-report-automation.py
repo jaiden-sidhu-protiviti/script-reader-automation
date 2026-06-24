@@ -588,9 +588,11 @@ class App(tk.Tk):
 
             # replace absolute occurrences of base_dir with relative paths
             norm_base = os.path.normpath(base_dir)
+            norm_base_unix = norm_base.replace("\\", "/")
+            
             content = content.replace(norm_base + os.sep, "")
-            content = content.replace(norm_base.replace("\\", "/") + "/", "")
-            content = content.replace(f"file:///{norm_base.replace('\\', '/')}/", "")
+            content = content.replace(norm_base_unix + "/", "")
+            content = content.replace(f"file:///{norm_base_unix}/
 
             index_target = os.path.join(target_dir, "index.html")
             with open(index_target, "w", encoding="utf-8") as f:
