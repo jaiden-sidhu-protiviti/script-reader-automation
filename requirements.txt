@@ -20,9 +20,7 @@ pyinstaller-hooks-contrib==2026.6
 pylint==4.0.6
 python-dateutil==2.9.0.post0
 pytokens==0.4.1
-pywin32==312
 pywin32-ctypes==0.2.3
-ruff==0.15.18
 setuptools==82.0.1
 six==1.17.0
 tomlkit==0.15.0
