@@ -69,7 +69,6 @@ def parse_running_services(file_path):
                     "active": active,
                     "status": status,
                     "description": display_name,
-                    "raw_row": row,
                 }
             )
 

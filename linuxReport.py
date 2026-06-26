@@ -400,7 +400,7 @@ def render_html(
         f.write("    ).filter(cb => cb.checked).map(cb => parseInt(cb.dataset.idx));\n")
         f.write("    if (selected.length === 0) { alert('Please select at least one host.'); return; }\n")
         f.write("    const wb = XLSX.utils.book_new();\n")
-        f.write("    const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','MIN Comments'];\n")
+        f.write("    const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','Editor\\'s Notes'];\n")
         f.write("    selected.forEach(idx => {\n")
         f.write("      const host = EXPORT_DATA[idx];\n")
         f.write("      const sheetData = [headers];\n")
@@ -485,7 +485,7 @@ def render_html(
         f.write("                        wrapper.className = 'finding-item editor-note';\n")
         f.write("                        const label = document.createElement('div');\n")
         f.write("                        label.className = 'finding-label';\n")
-        f.write("                        label.innerHTML = '<b>MIN Comment (' + escapeHtml(n.timestamp) + ', moved to ' + escapeHtml(n.status) + '):</b>';\n")
+        f.write("                        label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(n.timestamp) + ', moved to ' + escapeHtml(n.status) + '):</b>';\n")
         f.write("                        const body = document.createElement('div');\n")
         f.write("                        body.innerHTML = escapeHtml(n.note).replace(/\\n/g, '<br>');\n")
         f.write("                        wrapper.appendChild(label);\n")
@@ -667,7 +667,7 @@ def render_html(
         f.write("            wrapper.className = 'finding-item editor-note';\n")
         f.write("            const label = document.createElement('div');\n")
         f.write("            label.className = 'finding-label';\n")
-        f.write("            label.innerHTML = '<b>MIN Comment (' + escapeHtml(timestamp) + ', moved to ' + escapeHtml(status) + '):</b>';\n")
+        f.write("            label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(timestamp) + ', moved to ' + escapeHtml(status) + '):</b>';\n")
         f.write("            const body = document.createElement('div');\n")
         f.write("            body.innerHTML = escapeHtml(note).replace(/\\n/g, '<br>');\n")
         f.write("            wrapper.appendChild(label);\n")
@@ -716,7 +716,7 @@ def render_html(
         f.write("        <select id='fileSelect' onchange='onFileChange.call(this)'></select>\n")
         f.write("    </div>\n")
         f.write("    <textarea id='fileContent' readonly></textarea>\n")
-        f.write("    <label>MIN Comment:</label>\n")
+        f.write("    <label>Editor\\'s Note:</label>\n")
         f.write("    <textarea id='editorNote'></textarea>\n")
         f.write("    <div style='margin-top: 12px;'>\n")
         f.write("        <button onclick='saveReview()' style='padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;'>Save</button>\n")
@@ -1125,7 +1125,7 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         f.write("\n")
         f.write("        const wb      = XLSX.utils.book_new();\n")
         f.write(
-            "        const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','MIN Comments'];\n"
+            "        const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','Editor\\'s Notes'];\n"
         )
         f.write("\n")
         f.write("        selected.forEach(idx => {\n")
@@ -1234,7 +1234,6 @@ def evaluate_from_json(data, all_files, cheat_sheet):
 
     summary = data.get("summary", {})
     ssh = data.get("sshd_config", {})
-    # case-insensitive lookup for ssh keys
     ssh_lower = {k.lower(): v for k, v in ssh.items()}
     logging = data.get("logging", {})
     ts = data.get("timesync", {})
@@ -3124,9 +3123,6 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         )
     )
 
-    # -------------------------
-    # [11.5.2.a]
-    # -------------------------
     # -------------------------
     # [11.5.2.a]
     # -------------------------
