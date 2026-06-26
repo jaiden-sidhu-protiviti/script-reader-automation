@@ -3576,7 +3576,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     fim_keywords = [
         "tripwire", "fim", "aide", "qualys", "crowdstrike", "defender",
         "carbon black", "sentinelone", "cylance", "file integrity",
-        "fileintegrity", "change detection", "integrity monitor",
+        "fileintegrity", "change detection", "integrity monitor", "trend micro", "ds_agent"
     ]
     fim_svcs, fim_apps = find_in_services_and_apps(fim_keywords)
     fim_detected = bool(fim_svcs or fim_apps)
@@ -3584,8 +3584,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     findings_11552 = []
     if fim_svcs:
         findings_11552.append(f"FIM/change-detection services detected: {fim_svcs}")
+        findings_11552.append("Confirm that this module is configured as an FIM/change detection solution.\n")
     if fim_apps:
         findings_11552.append(f"FIM/change-detection applications detected: {fim_apps}")
+        findings_11552.append("Confirm that this module is configured as an FIM/change detection solution.\n")
     if not fim_detected:
         findings_11552.append(
             "No known FIM or change-detection services or applications were identified. "
@@ -3599,7 +3601,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     add(
         "[11.5.2.a]",
         "Provide system settings to confirm the use of a change-detection mechanism.",
-        "passed" if fim_detected else "manual",
+        "review",
         findings_11552,
         ["09_Services_Details.csv", "11_InstalledPatches.txt"],
         default_file="09_Services_Details.csv",
