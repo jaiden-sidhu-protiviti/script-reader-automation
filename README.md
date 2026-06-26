@@ -9,23 +9,19 @@ The tool processes host evidence folders, converts raw script outputs into a nor
 - a combined `index.html` homepage,
 - supporting JSON artifacts in `output_json/`.
 
-This project is intended for audit and control review workflows, not for active vulnerability scanning. test change
+This project is intended for audit and control review workflows, not for active vulnerability scanning.
 
 ---
 
 ## Core Components
 
-### `main.py`
+### `script-report-automatoin.py`
 - Primary GUI entry point using Tkinter.
-- Accepts up to 6 host folders.
+- Accepts up to 30 host folders.
 - Detects host type and selects the correct parser and report generator.
 - Writes output to `output_json/`, `reports/`, and `index.html`.
+- Writes saved reports to `saved_reports/`.
 - Opens the generated homepage if the user opts in.
-
-### `main-local.py`
-- CLI-style runner for batch or automated execution.
-- Uses a hardcoded `sample_folders` list instead of the desktop UI.
-- Demonstrates the same pipeline without Tkinter.
 
 ### `windowsParser.py`
 - Parses Windows evidence files into a normalized JSON payload.
@@ -57,7 +53,7 @@ This project is intended for audit and control review workflows, not for active 
 ## Execution Flow
 
 ### 1. Host Type Detection
-`main.py` determines OS type using marker files in each selected folder:
+`script-report-automation.py` determines OS type using marker files in each selected folder:
 - Windows if `00_Analysis.txt` exists.
 - Linux if `summary.csv` exists.
 - otherwise the folder is skipped.
@@ -65,7 +61,7 @@ This project is intended for audit and control review workflows, not for active 
 This is handled by `detect_os_type(folder)`.
 
 ### 2. Parsing
-For each host folder, `main.py` runs either:
+For each host folder, `script-report-automation.py` runs either:
 - `build_windows_output(folder, temp_json_path)`
 - `build_linux_output(folder, temp_json_path)`
 
@@ -73,14 +69,14 @@ Each parser reads a fixed list of expected evidence files and merges their parse
 Missing input files are generally handled gracefully by returning a placeholder rather than raising an exception.
 
 ### 3. JSON Output
-The parser writes normalized JSON to a temporary file in `output_json/`, then renames it to a final output path based on a slugified hostname.
+The parser writes normalized JSON to a temporary file in `output_json/`, then renames it to a final output path based on hostname.
 
 Output paths look like:
-- `output_json/windows_output_{slug}.json`
-- `output_json/linux_output_{slug}.json`
+- `output_json/windows_output_{hostname}.json`
+- `output_json/linux_output_{hostname}.json`
 
 ### 4. Report Building
-`main.py` then calls the report module for the host:
+`script-report-automation.py` then calls the report module for the host:
 - `windowsReport.build_report(...)`
 - `linuxReport.build_report(...)`
 
@@ -95,15 +91,17 @@ The homepage aggregates:
 - host statuses,
 - status counts,
 - links to host reports.
+- findings for each requirement per host, which can be viewed by expanding any requirement
 
 ---
 
 ## Report Output
 
 ### Generated artifacts
-- `output_json/` — normalized host JSON files
-- `reports/` — static per-host HTML reports
-- `index.html` — combined homepage
+- `output_json/` - normalized host JSON files
+- `reports/` - static per-host HTML reports
+- `saved_reports/` - saved pages with a .json session key (which stores the current state of the analysis)
+- `index.html` - combined homepage
 
 ### Per-host report contents
 Each host report includes:
@@ -139,7 +137,7 @@ They produce dictionaries such as:
 Report modules assume these keys exist and use them to derive requirement results.
 
 ### Status values
-Report rows use a fixed set of statuses:
+Report rows use a fixed set of statuses (case-sensitive):
 - `passed`
 - `failed`
 - `review`
@@ -148,11 +146,10 @@ Report rows use a fixed set of statuses:
 
 ### Evidence preservation
 The report renderer preserves raw evidence content for display.
-Long files are truncated after 300 lines, and a download-style link is included for full content access.
+Long files are truncated after 300 lines.
 
 ### Local persistence
-Reviewer overrides and notes are stored in browser `localStorage`, scoped to the generated report session.
-This retains local review state without requiring a backend.
+Changes to reviews, as well as editor's notes, are saved in the page and are reflected when you load a saved report.
 
 ---
 
@@ -161,30 +158,19 @@ This retains local review state without requiring a backend.
 ### Prerequisites
 - Python 3.9 or newer
 - `tkinter` available for GUI mode
-- no external Python packages required for the core pipeline
+- The packages included in requirements.txt
 
 ### GUI mode
 From the repository root:
 
 ```powershell
-python main.py
+python script-report-automation.py
 ```
 
 Then:
-1. Select up to 6 host output folders.
+1. Select up to 30 host output folders.
 2. Click `Build Reports`.
 3. Choose whether to open `index.html` when prompted.
-
-### CLI mode
-Edit `main-local.py` and set the `sample_folders` list to your target folders.
-
-Run:
-
-```powershell
-python main-local.py
-```
-
-This performs the same parsing and report generation pipeline without the desktop UI.
 
 ### Direct parser invocation
 For JSON-only output, call parser builders directly:
@@ -198,7 +184,7 @@ build_linux_output('sampleLinux1', 'output_json/linux_output_example.json')
 
 ## Packaging with PyInstaller
 
-The project includes a PyInstaller command example in `main.py`.
+The project includes a PyInstaller command example in `script-report-automation.py`.
 
 From the repo root:
 
@@ -213,7 +199,7 @@ pyinstaller --onefile --noconsole `
   --hidden-import windowsParser `
   --hidden-import linuxReport `
   --hidden-import windowsReport `
-  main.py
+  script-report-automation.py
 ```
 
 The resulting executable will include the parser and report modules plus the cheat sheet data.
@@ -223,8 +209,7 @@ The resulting executable will include the parser and report modules plus the che
 ## Development Notes
 
 - Folder names do not matter for parsing; the pipeline relies on raw file names inside each folder.
-- `main-local.py` is useful for headless or scripted execution.
-- The pipeline currently limits GUI selection to 6 folders.
+- The pipeline currently limits GUI selection to 30 folders.
 - `windowsReport.py` and `linuxReport.py` keep OS-specific control logic separate, with similar rendering patterns.
 - `cheat_sheet.json` is the easiest extension point for additional rule metadata.
 
@@ -233,8 +218,7 @@ The resulting executable will include the parser and report modules plus the che
 ## Recommended Improvements
 
 If you extend this codebase, consider:
-- moving HTML generation into a templating layer,
+- moving HTML generation into a templating layer in a separate program,
 - adding unit tests for parser functions,
-- adding CLI arguments to `main-local.py`,
 - making host detection configurable,
 - separating rule definitions from renderer code.

@@ -6,6 +6,7 @@
 import os
 import re
 import sys
+import json
 import uuid
 import webbrowser
 import logging
@@ -250,16 +251,18 @@ def run_pipeline(sample_folders, progress_callback=None):
         site_reports, output_path=index_path, report_session=shared_report_session
     )
 
-    # return the generated homepage path, site report results, and host metadata
-    return index_path, site_reports, hosts_meta
+    # return the generated homepage path, site report results, metadata from the hosts, and the report session
+    # The report sessions
+    return index_path, site_reports, hosts_meta, shared_report_session
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Script Output Report Builder")
-        self.resizable(False, False)
-        self.geometry("600x480")
+        self.resizable(True, True)
+        self.minsize(600, 500)
+        self.geometry("600x540")
         self.folders = []
         self.last_build = None
         self._build_ui()
@@ -309,7 +312,7 @@ class App(tk.Tk):
             list_frame,
             yscrollcommand=scrollbar.set,
             height=8,
-            selectmode=tk.SINGLE,
+            selectmode=tk.EXTENDED,
             font=("Courier New", 9),
         )
         self.folder_listbox.pack(fill="both", expand=True)
@@ -339,8 +342,8 @@ class App(tk.Tk):
         ).pack(padx=12, pady=8, fill="x")
 
         # Save report button and note
-        save_frame = tk.Frame(self)
-        save_frame.pack(padx=12, pady=(0, 8), fill="x")
+        save_frame = tk.Frame(self, relief="groove", bd=1)
+        save_frame.pack(side="bottom", padx=12, pady=(0, 10), fill="x")
 
         self.save_button = tk.Button(
             save_frame,
@@ -377,12 +380,12 @@ class App(tk.Tk):
                 "Limit Reached", f"Maximum of {MAX_FOLDERS} folders allowed."
             )
             return
-        # Let the user pick a parent folder, then select one or more folders
-        parent = filedialog.askdirectory(title="Select folder or parent folder to choose from")
+
+        parent = filedialog.askdirectory(title="Select folder or parent folder to search")
         if not parent:
             return
 
-        # If the selected folder already contains required marker files, add it directly.
+        # If the selected folder itself contains the required files, add it directly.
         valid, reason, _ = validate_folder(parent)
         if valid:
             if parent not in self.folders:
@@ -390,78 +393,82 @@ class App(tk.Tk):
                 self.folder_listbox.insert(tk.END, parent)
             return
 
-        # Otherwise, only prompt when there are immediate subfolders to choose from.
-        try:
-            subdirs = [os.path.join(parent, d) for d in os.listdir(parent) if os.path.isdir(os.path.join(parent, d))]
-        except Exception:
-            subdirs = []
+        # Recursively walk all subdirectories and collect every folder that
+        # contains the required marker files, regardless of how deep they are.
+        matches = []
+        for dirpath, dirnames, filenames in os.walk(parent):
+            # skip the root itself — already checked above
+            if os.path.normpath(dirpath) == os.path.normpath(parent):
+                continue
+            v, _, _ = validate_folder(dirpath)
+            if v:
+                matches.append(dirpath)
 
-        if not subdirs:
+        if not matches:
             messagebox.showerror(
-                "Invalid Folder",
-                f"{os.path.basename(parent)} does not appear to contain required files:\n\n{reason}",
+                "No Valid Folders Found",
+                f"No subfolders containing the required script output files were found "
+                f"anywhere inside:\n\n{parent}",
             )
             return
 
-        # candidates: only the immediate subfolders (exclude the root/parent)
-        entries = subdirs
-
-        # small chooser window with multi-select listbox
+        # Show a chooser with all discovered folders.
         chooser = tk.Toplevel(self)
         chooser.title("Select folders to add")
         chooser.geometry("600x400")
 
-        tk.Label(chooser, text="Select one or more folders to add:").pack(anchor="w", padx=8, pady=(8, 0))
+        tk.Label(
+            chooser,
+            text=f"Found {len(matches)} valid folder(s). Select the ones you want to add:",
+        ).pack(anchor="w", padx=8, pady=(8, 0))
+
         listbox = tk.Listbox(chooser, selectmode=tk.EXTENDED, font=("Courier New", 9))
         scrollbar = tk.Scrollbar(chooser, orient=tk.VERTICAL, command=listbox.yview)
         listbox.config(yscrollcommand=scrollbar.set)
-        listbox.pack(side="left", fill="both", expand=True, padx=(8,0), pady=8)
+        listbox.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=8)
         scrollbar.pack(side="left", fill="y", pady=8)
 
-        # show readable labels but store full paths in a map
-        path_map = []
-        for p in entries:
-            label = os.path.basename(p) or p
-            listbox.insert(tk.END, f"{label} — {p}")
-            path_map.append(p)
+        for p in matches:
+            # show the path relative to the parent so the list isn't cluttered
+            label = os.path.relpath(p, parent)
+            listbox.insert(tk.END, label)
 
         btn_frame = tk.Frame(chooser)
-        btn_frame.pack(fill="x", padx=8, pady=(0,8))
+        btn_frame.pack(fill="x", padx=8, pady=(0, 8))
 
         def on_add_selected():
             sel = listbox.curselection()
-            added = 0
             for i in sel:
                 if len(self.folders) >= MAX_FOLDERS:
-                    break
-                p = path_map[i]
-                valid, reason, _ = validate_folder(p)
-                if not valid:
-                    messagebox.showerror(
-                        "Invalid Folder",
-                        f"{os.path.basename(p)} does not appear to contain required files:\n\n{reason}",
+                    messagebox.showwarning(
+                        "Limit Reached",
+                        f"Maximum of {MAX_FOLDERS} folders reached. Some folders were not added.",
                     )
-                    continue
+                    break
+                p = matches[i]
                 if p not in self.folders:
                     self.folders.append(p)
                     self.folder_listbox.insert(tk.END, p)
-                    added += 1
             chooser.destroy()
 
         def on_cancel():
             chooser.destroy()
 
-        tk.Button(btn_frame, text="Add Selected", command=on_add_selected, bg="#0066cc", fg="white", width=14).pack(side="left")
-        tk.Button(btn_frame, text="Cancel", command=on_cancel, width=10).pack(side="left", padx=(8,0))
+        tk.Button(
+            btn_frame, text="Add Selected", command=on_add_selected,
+            bg="#0066cc", fg="white", width=14,
+        ).pack(side="left")
+        tk.Button(
+            btn_frame, text="Cancel", command=on_cancel, width=10,
+        ).pack(side="left", padx=(8, 0))
 
         chooser.transient(self)
         chooser.grab_set()
         self.wait_window(chooser)
 
     def _remove_folder(self):
-        sel = self.folder_listbox.curselection()
-        if sel:
-            idx = sel[0]
+        # reverse order so popping by index doesn't shift remaining indices
+        for idx in reversed(self.folder_listbox.curselection()):
             self.folder_listbox.delete(idx)
             self.folders.pop(idx)
 
@@ -499,7 +506,7 @@ class App(tk.Tk):
             "Confirm",
             (
                 "The tool will generate HTML and JSON files next to the application.\n\n"
-                "Do not edit any generated files (index.html, the reports folder, or output_json).\n\n"
+                "Do not edit any generated files (index.html, the reports folder, the saved_reports folder, or the output_json folder).\n\n"
                 "Continue?"
             ),
         ):
@@ -518,7 +525,7 @@ class App(tk.Tk):
         self.update()
 
         try:
-            index_path, site_reports, hosts_meta = run_pipeline(
+            index_path, site_reports, hosts_meta, report_session = run_pipeline(
                 self.folders, progress_callback=self._update_status
             )
 
@@ -537,6 +544,7 @@ class App(tk.Tk):
                 "index_path": index_path,
                 "site_reports": site_reports,
                 "hosts_meta": hosts_meta,
+                "report_session": report_session,
                 "saved": False,
             }
             self.save_button.config(state=tk.NORMAL)
@@ -579,20 +587,32 @@ class App(tk.Tk):
 
         os.makedirs(target_dir, exist_ok=True)
 
-        # copy index and related report/json files into the saved folder
+        #  collect current analysis state and write session_state.json 
+        report_session = self.last_build.get("report_session", "")
+        session_state = self._collect_session_state(report_session)
+        state_path = os.path.join(target_dir, "session_state.json")
+        try:
+            with open(state_path, "w", encoding="utf-8") as fh:
+                json.dump(session_state, fh, indent=2)
+        except Exception as e:
+            logging.exception("Could not write session_state.json")
+            messagebox.showerror("Save Failed", f"Could not write session state: {e}")
+            return
+
+        #  copy index.html 
         index_src = self.last_build.get("index_path")
-        # read and rewrite index to remove absolute paths pointing to base_dir
         try:
             with open(index_src, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            # replace absolute occurrences of base_dir with relative paths
             norm_base = os.path.normpath(base_dir)
             norm_base_unix = norm_base.replace("\\", "/")
-            
             content = content.replace(norm_base + os.sep, "")
             content = content.replace(norm_base_unix + "/", "")
             content = content.replace(f"file:///{norm_base_unix}/", "")
+
+            # inject bootstrap so localStorage is seeded when this saved copy opens
+            content = self._inject_state_bootstrap(content, session_state)
 
             index_target = os.path.join(target_dir, "index.html")
             with open(index_target, "w", encoding="utf-8") as f:
@@ -602,22 +622,26 @@ class App(tk.Tk):
             messagebox.showerror("Save Failed", f"Could not copy index.html: {e}")
             return
 
-        # create subfolders for reports and output_json
+        #  copy per-host report and json files 
         reports_out = os.path.join(target_dir, "reports")
         output_json_out = os.path.join(target_dir, "output_json")
         os.makedirs(reports_out, exist_ok=True)
         os.makedirs(output_json_out, exist_ok=True)
 
-        # copy per-host files
-        hosts = self.last_build.get("hosts_meta", [])
         skipped = []
-        for meta in hosts:
+        for meta in self.last_build.get("hosts_meta", []):
             rpt = meta.get("report_path")
             jpath = meta.get("json_path")
 
             if rpt and os.path.exists(rpt):
                 try:
-                    shutil.copy2(rpt, os.path.join(reports_out, os.path.basename(rpt)))
+                    # also inject the bootstrap into each individual report page
+                    with open(rpt, "r", encoding="utf-8") as fh:
+                        rpt_content = fh.read()
+                    rpt_content = self._inject_state_bootstrap(rpt_content, session_state)
+                    dest_rpt = os.path.join(reports_out, os.path.basename(rpt))
+                    with open(dest_rpt, "w", encoding="utf-8") as fh:
+                        fh.write(rpt_content)
                 except Exception:
                     skipped.append(rpt)
 
@@ -630,30 +654,6 @@ class App(tk.Tk):
         self.last_build["saved"] = True
         self.save_button.config(state=tk.DISABLED)
 
-        # also look for any review/exported state files that may contain user-edits (localStorage exports)
-        base_reports_dir = os.path.join(base_dir, "reports")
-        base_output_json = os.path.join(base_dir, "output_json")
-
-        def copy_reviews(src_dir, dst_dir):
-            if not os.path.isdir(src_dir):
-                return []
-            copied = []
-            for fn in os.listdir(src_dir):
-                if "review" in fn.lower() and fn.lower().endswith(".json"):
-                    src = os.path.join(src_dir, fn)
-                    try:
-                        shutil.copy2(src, os.path.join(dst_dir, fn))
-                        copied.append(src)
-                    except Exception:
-                        skipped.append(src)
-            return copied
-
-        copied_reviews = []
-        copied_reviews += copy_reviews(base_reports_dir, reports_out)
-        copied_reviews += copy_reviews(base_output_json, output_json_out)
-
-        # enable Open Previous Report button now that there's saved content
-        saved_root = os.path.join(base_dir, "saved_reports")
         try:
             self.open_prev_button.config(state=tk.NORMAL)
         except Exception:
@@ -662,10 +662,57 @@ class App(tk.Tk):
         if skipped:
             messagebox.showwarning(
                 "Saved With Warnings",
-                f"Saved to {target_dir}, but some files could not be copied:\n\n" + "\n".join(skipped),
+                f"Saved to {target_dir}, but some files could not be copied:\n\n"
+                + "\n".join(skipped),
             )
         else:
             messagebox.showinfo("Saved", f"Report saved to: {target_dir}")
+
+    def _collect_session_state(self, report_session: str) -> dict:
+        """Collect any sidecar *_state.json files written by the report pages."""
+        state = {"report_session": report_session, "entries": {}}
+        base_dir = get_base_dir()
+        reports_dir = os.path.join(base_dir, "reports")
+        if not os.path.isdir(reports_dir):
+            return state
+        for fn in os.listdir(reports_dir):
+            if not fn.lower().endswith(".html"):
+                continue
+            stem = fn[:-5]
+            sidecar = os.path.join(reports_dir, f"{stem}_state.json")
+            if os.path.exists(sidecar):
+                try:
+                    with open(sidecar, "r", encoding="utf-8") as fh:
+                        state["entries"][fn] = json.load(fh)
+                except Exception:
+                    logging.exception("Could not read state sidecar %s", sidecar)
+        return state
+
+    def _inject_state_bootstrap(self, html_content: str, session_state: dict) -> str:
+        """Insert a <script> block that seeds localStorage from the saved state."""
+        entries_js = json.dumps(session_state.get("entries", {}))
+        session_js = json.dumps(session_state.get("report_session", ""))
+        bootstrap = (
+            f'<script id="__state_bootstrap__">\n'
+            f'(function(){{\n'
+            f'  var S={session_js}, E={entries_js};\n'
+            f'  for(var k in E){{ try{{ localStorage.setItem(S+":"+k, JSON.stringify(E[k])); }}catch(e){{}} }}\n'
+            f'  try{{ localStorage.setItem("report_session",S); }}catch(e){{}}\n'
+            f'}})();\n'
+            f'</script>'
+        )
+        # remove any previously injected block first
+        html_content = re.sub(
+            r'<script id="__state_bootstrap__">.*?</script>',
+            "",
+            html_content,
+            flags=re.DOTALL,
+        )
+        # inject immediately after <head> so it runs before anything else
+        for tag in ("<head>", "<HEAD>"):
+            if tag in html_content:
+                return html_content.replace(tag, f"{tag}\n{bootstrap}", 1)
+        return bootstrap + "\n" + html_content
 
     def _open_previous_report(self):
         base_dir = get_base_dir()
@@ -674,16 +721,22 @@ class App(tk.Tk):
             messagebox.showwarning("No Saved Reports", "No saved_reports folder exists.")
             return
 
-        folder = filedialog.askdirectory(title="Select saved report folder", initialdir=saved_root)
+        folder = filedialog.askdirectory(
+            title="Select saved report folder", initialdir=saved_root
+        )
         if not folder:
             return
 
         index_path = os.path.join(folder, "index.html")
         if not os.path.exists(index_path):
-            messagebox.showerror("Missing Index", "Selected folder does not contain index.html")
+            messagebox.showerror(
+                "Missing Index", "Selected folder does not contain index.html"
+            )
             return
 
-        webbrowser.open(f"file:///{index_path.replace(os.sep, '/')}" )
+        # If the saved copy already has the bootstrap injected (from _save_report)
+        # we are done — just open it.  The bootstrap will seed localStorage.
+        webbrowser.open(f"file:///{index_path.replace(os.sep, '/')}")
 
 
 if __name__ == "__main__":

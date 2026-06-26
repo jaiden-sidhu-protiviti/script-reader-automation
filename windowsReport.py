@@ -637,7 +637,7 @@ def render_html(
         f.write("    ).filter(cb => cb.checked).map(cb => parseInt(cb.dataset.idx));\n")
         f.write("    if (selected.length === 0) { alert('Please select at least one host.'); return; }\n")
         f.write("    const wb = XLSX.utils.book_new();\n")
-        f.write("    const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','MIN Comments'];\n")
+        f.write("    const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','Editor\\'s Notes'];\n")
         f.write("    selected.forEach(idx => {\n")
         f.write("      const host = EXPORT_DATA[idx];\n")
         f.write("      const sheetData = [headers];\n")
@@ -722,7 +722,7 @@ def render_html(
         f.write("                        wrapper.className = 'finding-item editor-note';\n")
         f.write("                        const label = document.createElement('div');\n")
         f.write("                        label.className = 'finding-label';\n")
-        f.write("                        label.innerHTML = '<b>MIN Comment (' + escapeHtml(n.timestamp) + ', moved to ' + escapeHtml(n.status) + '):</b>';\n")
+        f.write("                        label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(n.timestamp) + ', moved to ' + escapeHtml(n.status) + '):</b>';\n")
         f.write("                        const body = document.createElement('div');\n")
         f.write("                        body.innerHTML = escapeHtml(n.note).replace(/\\n/g, '<br>');\n")
         f.write("                        wrapper.appendChild(label);\n")
@@ -904,7 +904,7 @@ def render_html(
         f.write("            wrapper.className = 'finding-item editor-note';\n")
         f.write("            const label = document.createElement('div');\n")
         f.write("            label.className = 'finding-label';\n")
-        f.write("            label.innerHTML = '<b>MIN Comment (' + escapeHtml(timestamp) + ', moved to ' + escapeHtml(status) + '):</b>';\n")
+        f.write("            label.innerHTML = '<b>Editor\\'s Note (' + escapeHtml(timestamp) + ', moved to ' + escapeHtml(status) + '):</b>';\n")
         f.write("            const body = document.createElement('div');\n")
         f.write("            body.innerHTML = escapeHtml(note).replace(/\\n/g, '<br>');\n")
         f.write("            wrapper.appendChild(label);\n")
@@ -953,7 +953,7 @@ def render_html(
         f.write("        <select id='fileSelect' onchange='onFileChange.call(this)'></select>\n")
         f.write("    </div>\n")
         f.write("    <textarea id='fileContent' readonly></textarea>\n")
-        f.write("    <label>MIN Comment:</label>\n")
+        f.write("    <label>Editor\\'s Note:</label>\n")
         f.write("    <textarea id='editorNote'></textarea>\n")
         f.write("    <div style='margin-top: 12px;'>\n")
         f.write("        <button onclick='saveReview()' style='padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;'>Save</button>\n")
@@ -1456,7 +1456,7 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
         f.write("        if (selected.length === 0) { alert('Please select at least one host.'); return; }\n")
         f.write("\n")
         f.write("        const wb      = XLSX.utils.book_new();\n")
-        f.write("        const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','MIN Comments'];\n")
+        f.write("        const headers = ['ID','Description','Status','Files','Findings','Look For','QSA Response','Editor\\'s Notes'];\n")
         f.write("\n")
         f.write("        selected.forEach(idx => {\n")
         f.write("            const host      = EXPORT_DATA[idx];\n")
@@ -1608,64 +1608,46 @@ def render_homepage(site_reports, output_path="index.html", report_session=None)
 def evaluate_from_json(data, all_files, cheat_sheet):
     report = []
 
-    def add(
-        id,
-        request_detail,
-        status,
-        findings,
-        files,
-        default_file=None,
-        look_for="",
-        qsa_response="",
-    ):
-        report.append(
-            {
-                "id": id,
-                "description": request_detail,
-                "status": status,
-                "findings": [
-                    {"message": f} if not isinstance(f, dict) else f for f in findings
-                ],
-                "files": files,
-                "default_file": default_file or (files[0] if files else None),
-                "look_for": look_for,
-                "evidence_files": all_files,
-                "qsa_response": qsa_response,
-            }
-        )
+    # -------------------------
+    # Core helper: append a rule result to report
+    # -------------------------
+    def add(id, request_detail, status, findings, files, default_file=None, look_for="", qsa_response=""):
+        report.append({
+            "id": id,
+            "description": request_detail,
+            "status": status,
+            "findings": [{"message": f} if not isinstance(f, dict) else f for f in findings],
+            "files": files,
+            "default_file": default_file or (files[0] if files else None),
+            "look_for": look_for,
+            "evidence_files": all_files,
+            "qsa_response": qsa_response,
+        })
 
-    summary = data.get("summary", {})
+    # -------------------------
+    # Data extraction
+    # -------------------------
+    summary         = data.get("summary", {})
     running_services = data.get("running_services", [])
-    data.get("update_history", [])
-    installed_apps = data.get("installed_apps", [])
+    installed_apps  = data.get("installed_apps", [])
+    installed_patches = data.get("installed_patches", [])
     password_policy = data.get("password_policy", {})
-    group_policy = data.get("group_policy", {})
+    group_policy    = data.get("group_policy", {})
     account_policies = group_policy.get("account_policies", {})
-    audit_policy = data.get("audit_policy", {})
-    data.get("logged_on_users", [])
-    local_users = data.get("local_users", [])
-    local_groups = data.get("local_groups", [])
-    data.get("rdp_config", {})
-    data.get("timesync", {})
-    system_info = data.get("systeminfo", {})
+    audit_policy    = data.get("audit_policy", {})
+    local_users     = data.get("local_users", [])
+    local_groups    = data.get("local_groups", [])
+    system_info     = data.get("systeminfo", {})
+    time_settings   = data.get("time_settings", {})
+    user_logons     = data.get("user_logons", [])
 
-    def get_pw(key_gp, key_pp, default=None):
-        return account_policies.get(key_gp) or password_policy.get(key_pp) or default
-
-    def get_group_policy_value(key):
-        # Prefer account_policies, then top-level audit_policy, then administrative_templates values
-        val = account_policies.get(key)
-        if val not in (None, ""):
-            return val
-        gp_audit = group_policy.get("audit_policy") or {}
-        if key in gp_audit:
-            return gp_audit.get(key)
-        admin_templates = group_policy.get("administrative_templates") or {}
-        if key in admin_templates:
-            entry = admin_templates.get(key) or {}
-            # entry may store 'value' or 'state'
-            return entry.get("value") or entry.get("state")
-        return None
+    # -------------------------
+    # Shared helper functions
+    # -------------------------
+    def safe_get(obj, *keys):
+        for key in keys:
+            obj = obj.get(key) if isinstance(obj, dict) else None
+        return obj
 
     def safe_int(value, default=0):
         try:
@@ -1673,95 +1655,267 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         except (TypeError, ValueError):
             return default
 
-    min_pw_len = safe_int(get_pw("MinimumPasswordLength", "Minimum password length", 0) or 0)
-    pw_history = safe_int(
-        get_pw("PasswordHistorySize", "Length of password history maintained", 0) or 0
-    )
-    max_pw_age = safe_int(
-        get_pw("MaximumPasswordAge", "Maximum password age (days)", 0) or 0
-    )
-    min_pw_age = safe_int(
-        get_pw("MinimumPasswordAge", "Minimum password age (days)", 0) or 0
-    )
+    def get_pw(key_gp, key_pp, default=None):
+        return account_policies.get(key_gp) or password_policy.get(key_pp) or default
+
+    def get_group_policy_value(key):
+        val = account_policies.get(key)
+        if val not in (None, ""):
+            return val
+        gp_audit = group_policy.get("audit_policy") or {}
+        if key in gp_audit:
+            return gp_audit[key]
+        admin_templates = group_policy.get("administrative_templates") or {}
+        if key in admin_templates:
+            entry = admin_templates[key] or {}
+            return entry.get("value") or entry.get("state")
+        return None
+
+    def rdp(key):
+        """Shorthand for get_rdp_setting."""
+        return get_rdp_setting(data, key)
+
+    def rdp_str(key, default=""):
+        return str(rdp(key) or default).strip()
+
+    def audit_has(value, *parts):
+        """Check if an audit string contains all given parts (case-insensitive)."""
+        v = value.lower()
+        return all(p in v for p in parts)
+
+    def pass_fail(condition):
+        return "PASS" if condition else "FAIL"
+
+    def find_in_services_and_apps(keywords):
+        """Return (services_list, apps_list) matching any keyword."""
+        matched_svcs = list(dict.fromkeys(
+            svc.get("service")
+            for svc in running_services
+            if any(
+                kw in (svc.get("service") or "").lower()
+                or kw in (svc.get("description") or "").lower()
+                for kw in keywords
+            )
+        ))
+        matched_apps = [
+            app.get("name")
+            for app in installed_apps
+            if any(kw in (app.get("name") or "").lower() for kw in keywords)
+        ]
+        return matched_svcs, matched_apps
+
+    def filter_accounts_by_markers(markers):
+        return [
+            u.get("username")
+            for u in local_users
+            if any(m in (u.get("username") or "").lower() for m in markers)
+        ]
+
+    def get_admin_group_members(restricted_groups):
+        """Resolve Administrators group members from restricted_groups or local_groups fallback."""
+        members = restricted_groups.get("Administrators", [])
+        if members:
+            return members
+        fallback = next(
+            (g for g in local_groups if g.get("group", "").lower() == "administrators"),
+            None,
+        )
+        return fallback.get("members", []) if fallback else []
+
+    def laps_detected():
+        return any(
+            "local administrator password solution" in (app.get("name") or "").lower()
+            for app in installed_apps
+        )
+
+    # -------------------------
+    # Pre-derived shared values
+    # -------------------------
+    min_pw_len    = safe_int(get_pw("MinimumPasswordLength", "Minimum password length", 0) or 0)
+    pw_history    = safe_int(get_pw("PasswordHistorySize", "Length of password history maintained", 0) or 0)
+    max_pw_age    = safe_int(get_pw("MaximumPasswordAge", "Maximum password age (days)", 0) or 0)
     lockout_count = safe_int(get_pw("LockoutBadCount", "Lockout threshold", 0) or 0)
     lockout_dur_raw = get_pw("LockoutDuration", "Lockout duration (minutes)", "0")
-    reset_count = safe_int(
-        get_pw("ResetLockoutCount", "Lockout observation window (minutes)", 0) or 0
-    )
+    reset_count   = safe_int(get_pw("ResetLockoutCount", "Lockout observation window (minutes)", 0) or 0)
 
-    # LockoutDuration: "4294967295" or "Never" both mean "never unlocks automatically"
+    pw_complexity_raw = (
+        safe_get(data, "security_policies_local", "System Access", "PasswordComplexity")
+        or safe_get(data, "security_policies_domain", "System Access", "PasswordComplexity")
+        or safe_get(data, "group_policy", "audit_policy", "PasswordComplexity")
+        or 0
+    )
+    pw_complexity = str(pw_complexity_raw).strip().lower() in {"1", "true", "enabled"}
+
     lockout_never = (
         str(lockout_dur_raw).strip().lower() == "never"
         or str(lockout_dur_raw).strip() == "4294967295"
     )
 
-    # --- Audit policy helpers ---
-    logon_audit = audit_policy.get("Logon/Logoff", {}).get("Logon", "")
-    acct_mgmt_audit = audit_policy.get("Account Management", {}).get(
-        "User Account Management", ""
-    )
-    priv_use_audit = audit_policy.get("Privilege Use", {}).get(
-        "Sensitive Privilege Use", ""
-    )
-    proc_audit = audit_policy.get("Detailed Tracking", {}).get("Process Creation", "")
-    policy_audit = audit_policy.get("Policy Change", {}).get("Audit Policy Change", "")
     telnet_disabled = str(summary.get("Telnet", "")).upper() != "TRUE"
-    nla_enabled = str(get_rdp_setting(data, "UserAuthentication") or "").strip() == "1"
-    get_rdp_setting(data, "SecurityLayer") or ""
+    nla_enabled     = rdp_str("UserAuthentication") == "1"
+    domain_name     = summary.get("Domain", "")
+    ad_joined       = bool(domain_name and domain_name.lower() not in ("", "workgroup"))
+
+    clear_text_val = str(get_group_policy_value("ClearTextPassword") or "Not Enabled").strip().lower()
+    clear_text_ok  = clear_text_val in ("not enabled", "0", "false")
+
+    # RDP values used across multiple rules
+    rdp_enc_level   = rdp_str("MinEncryptionLevel")
+    rdp_enc_level_ok = rdp_enc_level.isdigit() and int(rdp_enc_level) >= 3
+    rdp_enc_dis     = rdp_str("fDisableEncryption")
+    rdp_enc_not_dis = rdp_enc_dis == "0"
+    rdp_enc_rpc     = rdp_str("fEncryptRPCTraffic")
+    rdp_enc_rpc_ok  = rdp_enc_rpc == "1"
+    rdp_sec_layer   = rdp_str("SecurityLayer")
+    rdp_sec_layer_ok = rdp_sec_layer.isdigit() and int(rdp_sec_layer) >= 1
+    rdp_prompt_pw   = rdp_str("fPromptForPassword", "0")
+    rdp_disable_save = rdp_str("DisablePasswordSaving", "0")
+    rdp_prompt_ok   = rdp_prompt_pw == "1"
+    rdp_save_ok     = rdp_disable_save == "1"
+
+    # Audit policy helpers
+    logon_audit        = audit_policy.get("Logon/Logoff", {}).get("Logon", "")
+    acct_mgmt_audit    = audit_policy.get("Account Management", {}).get("User Account Management", "")
+    priv_use_audit     = audit_policy.get("Privilege Use", {}).get("Sensitive Privilege Use", "")
+    proc_audit         = audit_policy.get("Detailed Tracking", {}).get("Process Creation", "")
+    policy_audit       = audit_policy.get("Policy Change", {}).get("Audit Policy Change", "")
+    account_logon_audit = audit_policy.get("Account Logon", {}).get("Credential Validation", "")
+    acct_lockout_audit = audit_policy.get("Logon/Logoff", {}).get("Account Lockout", "")
+    special_logon_audit = audit_policy.get("Logon/Logoff", {}).get("Special Logon", "")
+    system_audit       = audit_policy.get("System", {})
+    security_sys_audit = system_audit.get("Security System Extension", "")
+    sys_integrity_audit = system_audit.get("System Integrity", "")
+
+    event_log_settings = group_policy.get("event_log_settings", {})
+    security_log       = event_log_settings.get("Security", {})
+    app_log            = event_log_settings.get("Application", {})
+    security_restrict_guest = str(security_log.get("RestrictGuestAccess", "")).strip().lower()
+    log_restricted     = security_restrict_guest in ("enabled", "1", "true")
+
+    # Logon-rights helper (used in 7.3.3)
+    gp_audit_policy = group_policy.get("audit_policy") or {}
+
+    # NTP helpers
+    ntp_client       = time_settings.get("NtpClient", {})
+    ntp_params       = time_settings.get("Parameters", {})
+    ntp_status_block = time_settings.get("Status", {})
+    ntp_config       = time_settings.get("Config", {})
+    ntp_client_enabled = str(ntp_client.get("Enabled", "0")).strip() == "1"
+    ntp_type         = ntp_params.get("Type", "")
+    ntp_server_param = ntp_params.get("NtpServer", "")
+    last_good_sample = (
+        ntp_status_block.get("LastGoodSampleInfo")
+        or ntp_config.get("LastKnownGoodTime")
+        or ntp_status_block.get("LastGoodSample")
+        or ""
+    )
+    ntp_type_ok    = ntp_type.upper() in ("NT5DS", "NTP", "ALLSYNC")
+    synchronized   = ntp_client_enabled and ntp_type_ok and bool(last_good_sample)
+    status_1061    = "passed" if synchronized else "review"
 
     # -------------------------
-    # [2.2.1.c]
+    # Restricted groups / admin members (shared across 7.x, 8.x, 10.x)
+    # -------------------------
+    restricted_groups_7 = as_dict(group_policy.get("restricted_groups"))
+    if not restricted_groups_7:
+        groups_list = data.get("groups") or []
+        if isinstance(groups_list, list) and groups_list:
+            try:
+                restricted_groups_7 = {
+                    g.get("group"): g.get("members", [])
+                    for g in groups_list
+                    if isinstance(g, dict) and g.get("group")
+                }
+            except Exception:
+                restricted_groups_7 = {}
+
+    admin_group_members = get_admin_group_members(restricted_groups_7)
+    rdp_group_members   = restricted_groups_7.get("Remote Desktop Users", [])
+    local_usernames     = [u.get("username") for u in local_users if u.get("username")]
+
+    # -------------------------
+    # Insecure services scan (shared: 2.2.1.c, 2.2.5.b, 2.2.6.c, 2.2.7.c)
     # -------------------------
     insecure_defs = cheat_sheet.get("insecure_services_windows", [])
     found_insecure = []
     matched_insecure_names = set()
-
     for svc in running_services:
-        service_name = (svc.get("service") or "").lower()
-        description = (svc.get("description") or "").lower()
-
-        # Skip if this service name has already produced a match
-        if service_name in matched_insecure_names:
+        svc_name = (svc.get("service") or "").lower()
+        svc_desc = (svc.get("description") or "").lower()
+        if svc_name in matched_insecure_names:
             continue
-
         for insecure in insecure_defs:
             aliases = [a.lower() for a in insecure.get("aliases", [])]
+            if any(alias in svc_name or alias in svc_desc for alias in aliases):
+                found_insecure.append({
+                    "service":     svc.get("service", ""),
+                    "description": svc.get("description", ""),
+                    "mapped_name": insecure.get("name", ""),
+                    "notes":       insecure.get("notes", ""),
+                    "remediation": insecure.get("remediation", ""),
+                })
+                matched_insecure_names.add(svc_name)
+                break
 
-            if any(alias in service_name or alias in description for alias in aliases):
-                found_insecure.append(
-                    {
-                        "service": svc.get("service", ""),
-                        "description": svc.get("description", ""),
-                        "mapped_name": insecure.get("name", ""),
-                        "notes": insecure.get("notes", ""),
-                        "remediation": insecure.get("remediation", ""),
-                    }
-                )
-                matched_insecure_names.add(service_name)
-                break  # avoid matching the same service to multiple insecure categories
+    # -------------------------
+    # AV / EDR detection (shared: 5.x)
+    # -------------------------
+    av_defs = cheat_sheet.get("av_signatures", [])
+    detected_av = []
+    matched_av_names = set()
+    for svc in running_services:
+        svc_name = (svc.get("service") or svc.get("name", "")).lower()
+        svc_desc = (svc.get("description") or "").lower()
+        state    = (svc.get("status") or "").lower()
+        if svc_name in matched_av_names:
+            continue
+        for av in av_defs:
+            aliases = [a.lower() for a in av.get("aliases", [])]
+            if any(alias in svc_name or alias in svc_desc for alias in aliases):
+                if "running" in state:
+                    detected_av.append({
+                        "vendor":      av.get("name"),
+                        "service":     svc.get("service") or svc.get("name", ""),
+                        "description": svc.get("description") or "(no description)",
+                    })
+                    matched_av_names.add(svc_name)
+                break
+    matched_vendors = {av["vendor"] for av in detected_av}
+    for app in installed_apps:
+        app_name = (app.get("name") or "").lower()
+        for av in av_defs:
+            if av.get("name") in matched_vendors:
+                continue
+            aliases = [a.lower() for a in av.get("aliases", [])]
+            if any(alias in app_name for alias in aliases):
+                detected_av.append({
+                    "vendor":      av.get("name"),
+                    "service":     "(installed application)",
+                    "description": app.get("name"),
+                })
+                matched_vendors.add(av.get("name"))
+                break
+    av_detected = bool(detected_av)
 
-    findings_221c = []
+    # -------------------------
+    # [2.2.1.c]
+    # -------------------------
     if found_insecure:
-        for hit in found_insecure:
-            findings_221c.append(
-                {
-                    "message": (
-                        f"<b>Detected potential insecure/common-risk service</b>: {hit['service']} "
-                        f"({hit['description']})\n"
-                        f"<b>Mapped category</b>: {hit['mapped_name']}\n"
-                        f"<b>Note/Risk</b>: {hit['notes']}\n"
-                        f"<b>Remediation</b>: {hit['remediation']}"
-                    ),
-                    "file": "09_Services_Details.csv",
-                }
-            )
-    else:
-        findings_221c.append(
+        findings_221c = [
             {
-                "message": "No common insecure services found. Please review before passing.",
+                "message": (
+                    f"<b>Detected potential insecure/common-risk service</b>: {h['service']} "
+                    f"({h['description']})\n"
+                    f"<b>Mapped category</b>: {h['mapped_name']}\n"
+                    f"<b>Note/Risk</b>: {h['notes']}\n"
+                    f"<b>Remediation</b>: {h['remediation']}"
+                ),
                 "file": "09_Services_Details.csv",
             }
-        )
+            for h in found_insecure
+        ]
+    else:
+        findings_221c = [{"message": "No common insecure services found. Please review before passing.", "file": "09_Services_Details.csv"}]
 
     add(
         "[2.2.1.c]",
@@ -1771,49 +1925,37 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["09_Services_Details.csv"],
         default_file="09_Services_Details.csv",
         look_for="Unexpected or insecure services such as telnet/ftp/rsh/rlogin/sendmail, etc.",
-        qsa_response="QSA reviewed configuration and confirmed that no insecure services were found enabled across systems. This was confirmed by reviewing the system configurations and service descriptions against common insecure services, as well as manual review of running services for any unexpected or high-risk services that may not be common.",
+        qsa_response=(
+            "QSA reviewed configuration and confirmed that no insecure services were found enabled across "
+            "systems. This was confirmed by reviewing the system configurations and service descriptions "
+            "against common insecure services, as well as manual review of running services for any "
+            "unexpected or high-risk services that may not be common."
+        ),
     )
 
     # -------------------------
     # [2.2.2.c]
     # -------------------------
-    default_account_names = {
-        "defaultaccount",
-        "guest",
-        "administrator",
-        "wdagutilityaccount",
-        "cbntguest",
-    }
+    default_account_names = {"defaultaccount", "guest", "administrator", "wdagutilityaccount", "cbntguest"}
     found_default_accounts = [
-        u["username"]
-        for u in local_users
+        u["username"] for u in local_users
         if u.get("username", "").lower() in default_account_names
     ]
-    guest_enabled = str(account_policies.get("EnableGuestAccount", "")).strip().lower()
+    guest_enabled    = str(account_policies.get("EnableGuestAccount", "")).strip().lower()
     guest_flag_active = guest_enabled not in ("", "not enabled", "0", "false")
-
-    if found_default_accounts or guest_flag_active:
-        status_222 = "review"
-    else:
-        status_222 = "passed"
+    status_222 = "review" if (found_default_accounts or guest_flag_active) else "passed"
 
     findings_222 = [f"Observed {len(local_users)} local accounts."]
-    if found_default_accounts:
-        findings_222.append(
-            f"Potential default/vendor accounts detected: {found_default_accounts}"
-        )
-    else:
-        findings_222.append(
-            "No common default account names detected among local users."
-        )
-    if guest_flag_active:
-        findings_222.append(
-            f"EnableGuestAccount policy = {guest_enabled} - Guest account may be active."
-        )
-    else:
-        findings_222.append(
-            f"EnableGuestAccount policy = {guest_enabled or 'Not Enabled'}"
-        )
+    findings_222.append(
+        f"Potential default/vendor accounts detected: {found_default_accounts}"
+        if found_default_accounts
+        else "No common default account names detected among local users."
+    )
+    findings_222.append(
+        f"EnableGuestAccount policy = {guest_enabled} - Guest account may be active."
+        if guest_flag_active
+        else f"EnableGuestAccount policy = {guest_enabled or 'Not Enabled'}"
+    )
 
     add(
         "[2.2.2.c]",
@@ -1824,16 +1966,12 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         default_file="03_LocalUsers.txt",
         look_for="Default or vendor-provided accounts that should be disabled or removed.",
         qsa_response=(
-            (
-                "QSA reviewed the local account listings and group policy settings to confirm that vendor default "
-                "accounts were removed or disabled. The review examined all local user accounts for common default "
-                "Windows account names, and confirmed that the Guest account was not enabled per the account policy. "
-                "No default or vendor-provided accounts were found to be active, reducing the risk of unauthorized "
-                "access via shared or well-known credentials."
-            )
-            if status_222 == "passed"
-            else ""
-        ),
+            "QSA reviewed the local account listings and group policy settings to confirm that vendor default "
+            "accounts were removed or disabled. The review examined all local user accounts for common default "
+            "Windows account names, and confirmed that the Guest account was not enabled per the account policy. "
+            "No default or vendor-provided accounts were found to be active, reducing the risk of unauthorized "
+            "access via shared or well-known credentials."
+        )
     )
 
     # -------------------------
@@ -1846,7 +1984,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         [
             "This control requires architecture and function separation review.",
             f"Observed {len(running_services)} running services as context.",
-            f"Local users observed: {[u.get('username') for u in local_users]}",
+            f"Local users observed: {local_usernames}",
         ],
         ["09_Services_Details.csv", "00_Analysis.txt"],
         default_file="09_Services_Details.csv",
@@ -1858,63 +1996,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ),
     )
 
-    # -------------------------
-    # [2.2.3.c]
-    # -------------------------
-
-    # Note: Per feedback from John Jordan, this requirement has been removed as it does not pertain to script outputs
-    
-    # insecure_defs = cheat_sheet.get("insecure_services_windows", [])
-    # detected_categories = set()
-
-    # for svc in running_services:
-    #     name = (svc.get("service") or "").lower()
-    #     desc = (svc.get("description") or "").lower()
-
-    #     for insecure in insecure_defs:
-    #         if any(
-    #             alias in name or alias in desc for alias in insecure.get("aliases", [])
-    #         ):
-    #             detected_categories.add(insecure["name"])
-
-    # findings_223c = []
-
-    # if detected_categories:
-    #     findings_223c.append(
-    #         f"Insecure/high-risk service categories detected: {list(detected_categories)}"
-    #     )
-
-    # if len(running_services) > 30:
-    #     findings_223c.append(
-    #         "Large number of services suggests possible multi-function host."
-    #     )
-
-    # if not nla_enabled:
-    #     findings_223c.append(
-    #         "RDP NLA is not enabled - indicates a weaker remote access security boundary."
-    #     )
-
-    # if not findings_223c:
-    #     findings_223c.append(
-    #         "No obvious conflicting security roles detected. Manual validation required."
-    #     )
-
-    # add(
-    #     "[2.2.3.c]",
-    #     "Provide system configurations to confirm that system functions requiring different security needs are separated or appropriately secured together.",
-    #     "review",
-    #     findings_223c,
-    #     ["09_Services_Details.csv", "05_GroupPolicy.txt"],
-    #     default_file="09_Services_Details.csv",
-    #     look_for="Coexistence of high-risk services with sensitive services or mixed security domains.",
-    #     qsa_response=(
-    #         "QSA reviewed the system configurations, running services, and RDP settings to evaluate whether "
-    #         "there were any conflicting primary functions or high-risk services coexisting on the host without "
-    #         "proper separation. The review considered the types of services running, their descriptions, and "
-    #         "the RDP configuration including NLA status to assess the security boundaries and whether functions "
-    #         "with different security needs were appropriately separated or secured together."
-    #     ),
-    # )
+    # [2.2.3.c] — removed per feedback from John Jordan
 
     # -------------------------
     # [2.2.4.b]
@@ -1943,7 +2025,6 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [2.2.5.b]
     # -------------------------
-
     if not found_insecure:
         add(
             "[2.2.5.b]",
@@ -1963,71 +2044,19 @@ def evaluate_from_json(data, all_files, cheat_sheet):
                 "categories, and no unexpected or high-risk services were identified."
             ),
         )
-
     else:
-        # Windows hardening review via RDP config and group policy
-        findings_225b = []
-
-        nla_val = get_rdp_setting(data, "UserAuthentication")
-        encrypt_level = get_rdp_setting(data, "MinEncryptionLevel")
-        disable_enc = get_rdp_setting(data, "fDisableEncryption")
-        prompt_pw = get_rdp_setting(data, "fPromptForPassword")
-        disable_pw_save = get_rdp_setting(data, "DisablePasswordSaving")
-        enc_rpc = get_rdp_setting(data, "fEncryptRPCTraffic")
-        security_layer = get_rdp_setting(data, "SecurityLayer")
-        pw_complexity = get_group_policy_value("PasswordComplexity") or ""
-        clear_text_pw = get_group_policy_value("ClearTextPassword") or ""
-
         checks_225b = {
-            f'<b>NLA (UserAuthentication) enabled</b> - {str(nla_val).strip() == "1"}': str(
-                nla_val
-            ).strip()
-            == "1",
-            f"<b>Minimum encryption level ≥ 3</b> - {str(encrypt_level).strip().isdigit() and int(str(encrypt_level).strip()) >= 3}": str(
-                encrypt_level
-            )
-            .strip()
-            .isdigit()
-            and int(str(encrypt_level).strip()) >= 3,
-            f'<b>Encryption not disabled (fDisableEncryption = 0)</b> - {str(disable_enc).strip() == "0"}': str(
-                disable_enc
-            ).strip()
-            == "0",
-            f'<b>Password prompt enforced (fPromptForPassword = 1)</b> - {str(prompt_pw).strip() == "1"}': str(
-                prompt_pw
-            ).strip()
-            == "1",
-            f'<b>Password saving disabled (DisablePasswordSaving = 1)</b> - {str(disable_pw_save).strip() == "1"}': str(
-                disable_pw_save
-            ).strip()
-            == "1",
-            f'<b>RPC traffic encrypted (fEncryptRPCTraffic = 1)</b> - {str(enc_rpc).strip() == "1"}': str(
-                enc_rpc
-            ).strip()
-            == "1",
-            f"<b>Security layer configured (SecurityLayer ≥ 1)</b> - {str(security_layer).strip().isdigit() and int(str(security_layer).strip()) >= 1}": str(
-                security_layer
-            )
-            .strip()
-            .isdigit()
-            and int(str(security_layer).strip()) >= 1,
-            f'<b>Password complexity enabled</b> - {str(pw_complexity).strip().lower() in ("enabled", "1", "true")}': str(
-                pw_complexity
-            )
-            .strip()
-            .lower()
-            in ("enabled", "1", "true"),
-            f'<b>Clear-text password storage disabled</b> - {str(clear_text_pw).strip().lower() in ("not enabled", "0", "false")}': str(
-                clear_text_pw
-            )
-            .strip()
-            .lower()
-            in ("not enabled", "0", "false"),
+            f"<b>NLA (UserAuthentication) enabled</b> - {nla_enabled}":                           nla_enabled,
+            f"<b>Minimum encryption level ≥ 3</b> - {rdp_enc_level_ok}":                          rdp_enc_level_ok,
+            f"<b>Encryption not disabled (fDisableEncryption = 0)</b> - {rdp_enc_not_dis}":       rdp_enc_not_dis,
+            f"<b>Password prompt enforced (fPromptForPassword = 1)</b> - {rdp_prompt_ok}":        rdp_prompt_ok,
+            f"<b>Password saving disabled (DisablePasswordSaving = 1)</b> - {rdp_save_ok}":       rdp_save_ok,
+            f"<b>RPC traffic encrypted (fEncryptRPCTraffic = 1)</b> - {rdp_enc_rpc_ok}":          rdp_enc_rpc_ok,
+            f"<b>Security layer configured (SecurityLayer ≥ 1)</b> - {rdp_sec_layer_ok}":         rdp_sec_layer_ok,
+            f"<b>Password complexity enabled</b> - {pw_complexity}":                              pw_complexity,
+            f"<b>Clear-text password storage disabled</b> - {clear_text_ok}":                     clear_text_ok,
         }
-
-        for check, passed in checks_225b.items():
-            findings_225b.append(f"{check}: {'PASS' if passed else 'FAIL'}")
-
+        findings_225b = [f"{label}: {pass_fail(ok)}" for label, ok in checks_225b.items()]
         add(
             "[2.2.5.b]",
             "Provide configuration settings to confirm that additional security features are implemented to reduce the risk of using insecure services, daemons, and protocols.",
@@ -2048,201 +2077,116 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [2.2.6.c]
     # -------------------------
-
     findings_226c = []
-    status = "passed"
+    status_226c = "passed"
 
-    # Admin group membership check (Windows equivalent of UID 0)
-    restricted_groups = data.get("group_policy", {}).get("restricted_groups", {})
-    admin_members = restricted_groups.get("Administrators", [])
-
-    if admin_members:
-        findings_226c.append(
-            f"Administrators group members (restricted_groups): {admin_members}"
-        )
+    restricted_groups_226 = group_policy.get("restricted_groups", {})
+    admin_members_226 = restricted_groups_226.get("Administrators", [])
+    if admin_members_226:
+        findings_226c.append(f"Administrators group members (restricted_groups): {admin_members_226}")
     else:
-        # Fall back to local_groups
         admin_group = next(
-            (g for g in local_groups if g.get("group", "").lower() == "administrators"),
-            None,
+            (g for g in local_groups if g.get("group", "").lower() == "administrators"), None
         )
         if admin_group:
-            admin_members = admin_group.get("members", [])
-            findings_226c.append(
-                f"Administrators group members (local_groups): {admin_members}"
-            )
+            findings_226c.append(f"Administrators group members (local_groups): {admin_group.get('members', [])}")
         else:
             findings_226c.append("Administrators group not found in available data.")
 
-    # Unused / insecure services (reuse 2.2.1.c logic)
     if not found_insecure:
         findings_226c.append("No common insecure services detected: PASS")
     else:
         findings_226c.append(f"Insecure services present: {len(found_insecure)} found")
-        status = "review"
+        status_226c = "review"
 
-    # Password policy strength (use already-derived min_pw_len)
     if min_pw_len >= 12:
         findings_226c.append(f"Minimum password length = {min_pw_len}: PASS")
     else:
-        findings_226c.append(
-            f"Minimum password length = {min_pw_len}: FAIL (requirement: 12+)"
-        )
-        status = "review"
+        findings_226c.append(f"Minimum password length = {min_pw_len}: FAIL (requirement: 12+)")
+        status_226c = "review"
 
-    # Password complexity
-    pw_complexity_val = get_group_policy_value("PasswordComplexity") or ""
-    if str(pw_complexity_val).strip().lower() in ("enabled", "1", "true"):
-        findings_226c.append(f"Password complexity = {pw_complexity_val}: PASS")
+    if pw_complexity:
+        findings_226c.append(f"Password complexity = {pw_complexity_raw}: PASS")
     else:
-        findings_226c.append(
-            f"Password complexity = {pw_complexity_val or 'Not found'}: FAIL"
-        )
-        status = "review"
+        findings_226c.append(f"Password complexity = {pw_complexity_raw or 'Not found'}: FAIL")
+        status_226c = "review"
 
-    # Generic/default account detection from local_users
-    generic_names = {
-        "test",
-        "guest",
-        "admin",
-        "user",
-        "defaultaccount",
-        "wdagutilityaccount",
-    }
-    generic_users = [
-        u.get("username")
-        for u in local_users
-        if u.get("username", "").lower() in generic_names
-    ]
-
-    if generic_users:
-        findings_226c.append(
-            f"Potential generic/default accounts detected: {generic_users}"
-        )
-        status = "review"
+    generic_names_226 = {"test", "guest", "admin", "user", "defaultaccount", "wdagutilityaccount"}
+    generic_users_226 = [u.get("username") for u in local_users if u.get("username", "").lower() in generic_names_226]
+    if generic_users_226:
+        findings_226c.append(f"Potential generic/default accounts detected: {generic_users_226}")
+        status_226c = "review"
     else:
         findings_226c.append("No obvious generic or default accounts detected: PASS")
 
     add(
         "[2.2.6.c]",
         "Provide system configurations to confirm that common security parameters are set appropriately and in accordance with configuration standards.",
-        status,
+        status_226c,
         findings_226c,
         ["03_LocalUsers.txt", "00_Analysis.txt"],
         default_file="03_LocalUsers.txt",
         look_for="Common hardening controls: administrator group membership, password policies, service minimization, and account hygiene.",
         qsa_response=(
-            (
-                "QSA reviewed the system configurations, password policies, and local account information to "
-                "evaluate whether common security parameters were set appropriately. The review focused on key "
-                "hardening controls including administrator group membership, confirmation that no common insecure "
-                "services were present, password policy strength including minimum length and complexity "
-                "requirements, and an assessment of local accounts for generic or default usernames that may "
-                "indicate weak account hygiene."
-            )
-            if status == "passed"
-            else ""
-        ),
+            "QSA reviewed the system configurations, password policies, and local account information to "
+            "evaluate whether common security parameters were set appropriately. The review focused on key "
+            "hardening controls including administrator group membership, confirmation that no common insecure "
+            "services were present, password policy strength including minimum length and complexity "
+            "requirements, and an assessment of local accounts for generic or default usernames that may "
+            "indicate weak account hygiene."
+        )
     )
 
     # -------------------------
     # [2.2.7.b]
     # -------------------------
+    status_227b = "passed" if telnet_disabled and nla_enabled else "failed"
     add(
         "[2.2.7.b]",
         "Provide system configurations to confirm that non-console administrative access is managed in accordance with this requirement.",
-        "passed" if telnet_disabled and nla_enabled else "failed",
+        status_227b,
         [
             f"Telnet flag in summary = {summary.get('Telnet')}",
-            f"RDP NLA Enabled (UserAuthentication) = {get_rdp_setting(data, 'UserAuthentication') or ''}",
-            f"RDP Security Layer = {get_rdp_setting(data, 'SecurityLayer') or ''}",
+            f"RDP NLA Enabled (UserAuthentication) = {rdp_str('UserAuthentication')}",
+            f"RDP Security Layer = {rdp_str('SecurityLayer')}",
         ],
         ["00_Analysis.txt", "05_GroupPolicy.txt"],
         default_file="05_GroupPolicy.txt",
         look_for="Telnet disabled and RDP Network Level Authentication (NLA) enabled.",
         qsa_response=(
-            (
-                "QSA reviewed the system configurations to confirm that non-console administrative access was "
-                "managed in accordance with the requirement. The review confirmed that Telnet was disabled as "
-                "indicated in the system summary, and that RDP was configured with Network Level Authentication "
-                "(NLA) enabled, ensuring that only authenticated users may establish remote desktop sessions. "
-                "The RDP security layer setting was also reviewed as part of evaluating the overall security "
-                "posture of remote administrative access."
-            )
-            if telnet_disabled and nla_enabled
-            else ""
-        ),
+            "QSA reviewed the system configurations to confirm that non-console administrative access was "
+            "managed in accordance with the requirement. The review confirmed that Telnet was disabled as "
+            "indicated in the system summary, and that RDP was configured with Network Level Authentication "
+            "(NLA) enabled, ensuring that only authenticated users may establish remote desktop sessions. "
+            "The RDP security layer setting was also reviewed as part of evaluating the overall security "
+            "posture of remote administrative access."
+        )
     )
 
     # -------------------------
     # [2.2.7.c]
     # -------------------------
+    insecure_remote = [
+        s for s in found_insecure
+        if any(x in s.get("mapped_name", "").lower() for x in ["telnet", "rlogin", "rsh", "rexec", "ftp"])
+    ]
+    insecure_ok = not insecure_remote
+    auth_ok = rdp_prompt_ok and rdp_save_ok and clear_text_ok
 
     findings_227c = []
-
-    # Insecure remote services check (reuse 2.2.1.c)
-    insecure_remote = [
-        s
-        for s in found_insecure
-        if any(
-            x in s.get("mapped_name", "").lower()
-            for x in ["telnet", "rlogin", "rsh", "rexec", "ftp"]
-        )
-    ]
-
-    if not insecure_remote:
-        findings_227c.append(
-            "No insecure remote login services detected (e.g., Telnet, rlogin, FTP): PASS"
-        )
-        insecure_ok = True
-    else:
-        findings_227c.append(
-            f"Insecure remote services detected: {[s['mapped_name'] for s in insecure_remote]}: FAIL"
-        )
-        insecure_ok = False
-
-    # NLA (Windows equivalent of SSH protocol strength)
-    protocol_ok = nla_enabled
     findings_227c.append(
-        f"RDP NLA (UserAuthentication) = {get_rdp_setting(data, 'UserAuthentication') or ''}: "
-        f"{'PASS' if protocol_ok else 'FAIL'}"
+        "No insecure remote login services detected (e.g., Telnet, rlogin, FTP): PASS"
+        if insecure_ok
+        else f"Insecure remote services detected: {[s['mapped_name'] for s in insecure_remote]}: FAIL"
     )
+    findings_227c.append(f"RDP NLA (UserAuthentication) = {rdp_str('UserAuthentication')}: {pass_fail(nla_enabled)}")
+    findings_227c.append(f"RDP fPromptForPassword = {rdp_prompt_pw}: {pass_fail(rdp_prompt_ok)}")
+    findings_227c.append(f"RDP DisablePasswordSaving = {rdp_disable_save}: {pass_fail(rdp_save_ok)}")
+    findings_227c.append(f"ClearTextPassword policy = {clear_text_val}: {pass_fail(clear_text_ok)}")
+    findings_227c.append(f"RDP MinEncryptionLevel = {rdp_enc_level}: {pass_fail(rdp_enc_level_ok)}")
+    findings_227c.append(f"RDP fEncryptRPCTraffic = {rdp_enc_rpc}: {pass_fail(rdp_enc_rpc_ok)}")
 
-    # Authentication enforced - no empty/null passwords, password prompt required
-    rdp_prompt_pw = str(get_rdp_setting(data, "fPromptForPassword") or "0").strip()
-    rdp_disable_save = str(get_rdp_setting(data, "DisablePasswordSaving") or "0").strip()
-    clear_text_val = (
-        str(get_group_policy_value("ClearTextPassword") or "Not Enabled").strip().lower()
-    )
-
-    auth_ok = (
-        rdp_prompt_pw == "1"
-        and rdp_disable_save == "1"
-        and clear_text_val in ("not enabled", "0", "false")
-    )
-
-    findings_227c.append(
-        f"RDP fPromptForPassword = {rdp_prompt_pw}: {'PASS' if rdp_prompt_pw == '1' else 'FAIL'}"
-    )
-    findings_227c.append(
-        f"RDP DisablePasswordSaving = {rdp_disable_save}: {'PASS' if rdp_disable_save == '1' else 'FAIL'}"
-    )
-    findings_227c.append(
-        f"ClearTextPassword policy = {clear_text_val}: {'PASS' if clear_text_val in ('not enabled', '0', 'false') else 'FAIL'}"
-    )
-
-    # Encryption strength
-    enc_level = str(get_rdp_setting(data, "MinEncryptionLevel") or "0").strip()
-    enc_rpc = str(get_rdp_setting(data, "fEncryptRPCTraffic") or "0").strip()
-    findings_227c.append(
-            f"RDP MinEncryptionLevel = {enc_level}: {'PASS' if enc_level.isdigit() and int(enc_level) >= 3 else 'FAIL'}"
-    )
-    findings_227c.append(
-        f"RDP fEncryptRPCTraffic = {enc_rpc}: {'PASS' if enc_rpc == '1' else 'FAIL'}"
-    )
-
-    status_227c = "passed" if insecure_ok and protocol_ok and auth_ok else "review"
-
+    status_227c = "passed" if insecure_ok and nla_enabled and auth_ok else "review"
     add(
         "[2.2.7.c]",
         "Provide settings for system components and authentication services to confirm that insecure remote login services are not available for non-console administrative access.",
@@ -2252,240 +2196,100 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         default_file="05_GroupPolicy.txt",
         look_for="Absence of insecure remote protocols and presence of secure RDP with NLA, strong encryption, and authentication enforcement.",
         qsa_response=(
-            (
-                "QSA reviewed the system configurations to confirm that insecure remote login services were not "
-                "available for non-console administrative access. The review confirmed that no insecure remote "
-                "protocols such as Telnet, rlogin, or FTP were detected among running services, and that RDP "
-                "was configured with Network Level Authentication, password prompt enforcement, password save "
-                "disabled, RPC traffic encryption, and an appropriate minimum encryption level."
-            )
-            if status_227c == "passed"
-            else ""
-        ),
+            "QSA reviewed the system configurations to confirm that insecure remote login services were not "
+            "available for non-console administrative access. The review confirmed that no insecure remote "
+            "protocols such as Telnet, rlogin, or FTP were detected among running services, and that RDP "
+            "was configured with Network Level Authentication, password prompt enforcement, password save "
+            "disabled, RPC traffic encryption, and an appropriate minimum encryption level."
+        )
     )
 
     # -------------------------
-    # Logic for 5.x to find anti-malware services
+    # AV helper (shared status for all 5.x rules)
     # -------------------------
-
-    detected_av = []
-    av_defs = cheat_sheet.get("av_signatures", [])
-
-    # Track already-matched service names to avoid duplicate entries
-    # from the same service appearing multiple times in the Windows process list
-    matched_service_names = set()
-
-    for svc in running_services:
-        service_name = (svc.get("service") or svc.get("name", "")).lower()
-        description = (svc.get("description") or "").lower()
-        state = (svc.get("status") or "").lower()
-
-        # Skip if we've already recorded a match for this service name
-        if service_name in matched_service_names:
-            continue
-
-        for av in av_defs:
-            aliases = [a.lower() for a in av.get("aliases", [])]
-
-            if any(alias in service_name or alias in description for alias in aliases):
-                if "running" in state:
-                    detected_av.append(
-                        {
-                            "vendor": av.get("name"),
-                            "service": svc.get("service") or svc.get("name", ""),
-                            "description": svc.get("description") or "(no description)",
-                        }
-                    )
-                    matched_service_names.add(service_name)
-                break  # stop checking more aliases for this service
-
-    # Secondary pass: check installed_apps for AV vendors not visible in services
-    matched_vendors = {av["vendor"] for av in detected_av}
-
-    for app in installed_apps:
-        app_name = (app.get("name") or "").lower()
-
-        for av in av_defs:
-            if av.get("name") in matched_vendors:
-                continue  # already detected via services
-
-            aliases = [a.lower() for a in av.get("aliases", [])]
-
-            if any(alias in app_name for alias in aliases):
-                detected_av.append(
-                    {
-                        "vendor": av.get("name"),
-                        "service": "(installed application)",
-                        "description": app.get("name"),
-                    }
-                )
-                matched_vendors.add(av.get("name"))
-                break
+    av_status   = "passed" if av_detected else "review"
+    av_vendors  = [av["vendor"] for av in detected_av]
+    av_findings = (
+        [f"Detected AV/EDR solution: {av['vendor']} ({av['service']}) - running" for av in detected_av]
+        if av_detected else ["No known AV/EDR services detected."]
+    )
 
     # -------------------------
     # [5.2.1.a]
     # -------------------------
-    status_521 = "passed" if detected_av else "review"
-
-    findings_521 = []
-
-    if detected_av:
-        for av in detected_av:
-            findings_521.append(
-                f"Detected AV/EDR solution: {av['vendor']} ({av['service']}) - running"
-            )
-    else:
-        findings_521.append("No known AV/EDR services detected.")
-
     add(
         "[5.2.1.a]",
         "Provide evidence that an anti-malware solution is deployed where required.",
-        status_521,
-        findings_521,
+        av_status,
+        av_findings,
         ["09_Services_Details.csv"],
         default_file="09_Services_Details.csv",
         look_for="Presence of AV/EDR services in running state.",
-        qsa_response="QSA reviewed the list of running services to identify any known anti-malware (AV/EDR) solutions deployed on the system to confirm that an anti-malware solution was present where required. The review consisted of finding matches between running services and known AV/EDR signatures, and evaluating their state to confirm they were active.",
+        qsa_response=(
+            "QSA reviewed the list of running services to identify any known anti-malware (AV/EDR) solutions "
+            "deployed on the system to confirm that an anti-malware solution was present where required. "
+            "The review consisted of finding matches between running services and known AV/EDR signatures, "
+            "and evaluating their state to confirm they were active."
+        ),
     )
 
     # -------------------------
-    # [5.3.1.a]
+    # [5.3.1.a] – [5.3.5.a]: shared AV-based rules
     # -------------------------
-    add(
-        "[5.3.1.a]",
-        "Provide anti-malware solution configurations to confirm the solution is configured appropriately.",
-        "passed" if detected_av else "review",
-        [
-            (
-                f"Detected AV solutions: {[av['vendor'] for av in detected_av]}"
-                if detected_av
-                else "No AV detected - requires review"
-            )
-        ],
-        ["09_Services_Details.csv"],
-        default_file="09_Services_Details.csv",
-        look_for="Active AV presence implies baseline configuration is applied.",
-        qsa_response="QSA reviewed the anti-malware solution configurations to confirm that the solution was configured appropriately. The review focused on ensuring that the AV/EDR solution was properly configured with baseline settings.",
-    )
-
-    # -------------------------
-    # [5.3.1.b]
-    # -------------------------
-    add(
-        "[5.3.1.b]",
-        "Provide logs to confirm that the anti-malware solution(s) and definitions are current and have been promptly deployed.",
-        "passed" if detected_av else "review",
-        [
-            (
-                "AV detected but version/definition recency cannot be verified from services."
-                if detected_av
-                else "No AV detected - cannot validate."
-            )
-        ],
-        ["09_Services_Details.csv"],
-        default_file="09_Services_Details.csv",
-        look_for="Definition update status or management console evidence.",
-        qsa_response="QSA reviewed the available evidence to evaluate whether the anti-malware solution and its definitions were current and promptly deployed. The review considered the presence of AV/EDR services and any available information about their version or definition update status.",
-    )
-
-    # -------------------------
-    # [5.3.2.a]
-    # -------------------------
-    add(
-        "[5.3.2.a]",
-        "Provide anti-malware configurations to confirm the solution is configured for active monitoring.",
-        "passed" if detected_av else "review",
-        [
-            (
-                "Running AV/EDR service strongly indicates active monitoring."
-                if detected_av
-                else "No AV/EDR running - active monitoring cannot be confirmed."
-            )
-        ],
-        ["09_Services_Details.csv"],
-        default_file="09_Services_Details.csv",
-        look_for="AV/EDR service running suggests active monitoring, but review for management console or logs to confirm.",
-        qsa_response="QSA reviewed the anti-malware solution configurations to confirm that the solution was configured for active monitoring. The review focused on the presence of running AV/EDR services as an indicator of active monitoring, while also noting that additional evidence such as management console access or logs would be needed to fully confirm active monitoring practices.",
-    )
-
-    # -------------------------
-    # [5.3.2.b]
-    # -------------------------
-    add(
-        "[5.3.2.b]",
-        "Provide evidence to confirm the anti-malware solution is enabled.",
-        "passed" if detected_av else "review",
-        [
-            (
-                "AV/EDR service observed running."
-                if detected_av
-                else "No AV service running."
-            )
-        ],
-        ["09_Services_Details.csv"],
-        default_file="09_Services_Details.csv",
-        qsa_response="QSA reviewed the evidence to confirm that the anti-malware solution was enabled. The review focused on the presence of running AV/EDR services as an indicator that the solution was active and enabled on the system.",
-    )
-
-    # -------------------------
-    # [5.3.2.c]
-    # -------------------------
-    add(
-        "[5.3.2.c]",
-        "Provide logs to confirm that the solution(s) is enabled in accordance with at least one of the elements specified in this requirement",
-        "passed" if detected_av else "review",
-        [
-            (
-                "AV running, but scheduling must be verified via logs or console."
-                if detected_av
-                else "No AV detected."
-            )
-        ],
-        ["09_Services_Details.csv"],
-        default_file="09_Services_Details.csv",
-        look_for="Scheduled scans, real-time protection status, or management console evidence confirming enabled features",
-        qsa_response="QSA reviewed the available evidence to confirm that the anti-malware solution was enabled in accordance with the specified elements. The review considered the presence of running AV/EDR services as an indicator of enabled status, while also noting that additional evidence such as logs or management console access would be needed to verify specific features like scheduled scans or real-time protection.",
-    )
-
-    # -------------------------
-    # [5.3.4]
-    # -------------------------
-    add(
-        "[5.3.4]",
-        "Provide anti-malware solution(s) configurations to confirm logs are enabled and retained in accordance with Requirement 10.5.1.",
-        "passed" if detected_av else "review",
-        [
-            (
-                "AV detected, but logging configuration cannot be validated from service data."
-                if detected_av
-                else "No AV detected."
-            )
-        ],
-        ["09_Services_Details.csv"],
-        default_file="09_Services_Details.csv",
-        look_for="Logging settings in AV configuration or management console, and retention policies.",
-        qsa_response="QSA reviewed the anti-malware solution configurations to confirm that logs were enabled and retained in accordance with Requirement 10.5.1. The review focused on the presence of running AV/EDR services as an indicator of an active solution, while also noting that specific logging configurations and retention policies would need to be verified through management console access or additional configuration files.",
-    )
-
-    # -------------------------
-    # [5.3.5.a]
-    # -------------------------
-    add(
-        "[5.3.5.a]",
-        "Provide anti-malware solution configurations to confirm that the anti-malware mechanisms cannot be disabled or altered by users.",
-        "passed" if detected_av else "review",
-        [
-            (
-                "AV detected, review to ensure appropriate tamper protection or policy controls are in place."
-                if detected_av
-                else "No AV detected."
-            )
-        ],
-        ["09_Services_Details.csv"],
-        default_file="09_Services_Details.csv",
-        look_for="Tamper protection settings or policy controls preventing user disablement.",
-        qsa_response="QSA reviewed the anti-malware solution configurations to confirm that the anti-malware mechanisms could not be disabled or altered by users. The review focused on identifying any tamper protection settings or policy controls that would prevent unauthorized disablement of the AV/EDR solution, while also noting that specific controls would need to be verified through management console access or additional configuration files.",
-    )
+    av_rules = [
+        (
+            "[5.3.1.a]",
+            "Provide anti-malware solution configurations to confirm the solution is configured appropriately.",
+            f"Detected AV solutions: {av_vendors}" if av_detected else "No AV detected - requires review",
+            "Active AV presence implies baseline configuration is applied.",
+            "QSA reviewed the anti-malware solution configurations to confirm that the solution was configured appropriately. The review focused on ensuring that the AV/EDR solution was properly configured with baseline settings.",
+        ),
+        (
+            "[5.3.1.b]",
+            "Provide logs to confirm that the anti-malware solution(s) and definitions are current and have been promptly deployed.",
+            "AV detected but version/definition recency cannot be verified from services." if av_detected else "No AV detected - cannot validate.",
+            "Definition update status or management console evidence.",
+            "QSA reviewed the available evidence to evaluate whether the anti-malware solution and its definitions were current and promptly deployed. The review considered the presence of AV/EDR services and any available information about their version or definition update status.",
+        ),
+        (
+            "[5.3.2.a]",
+            "Provide anti-malware configurations to confirm the solution is configured for active monitoring.",
+            "Running AV/EDR service strongly indicates active monitoring." if av_detected else "No AV/EDR running - active monitoring cannot be confirmed.",
+            "AV/EDR service running suggests active monitoring, but review for management console or logs to confirm.",
+            "QSA reviewed the anti-malware solution configurations to confirm that the solution was configured for active monitoring. The review focused on the presence of running AV/EDR services as an indicator of active monitoring, while also noting that additional evidence such as management console access or logs would be needed to fully confirm active monitoring practices.",
+        ),
+        (
+            "[5.3.2.b]",
+            "Provide evidence to confirm the anti-malware solution is enabled.",
+            "AV/EDR service observed running." if av_detected else "No AV service running.",
+            "",
+            "QSA reviewed the evidence to confirm that the anti-malware solution was enabled. The review focused on the presence of running AV/EDR services as an indicator that the solution was active and enabled on the system.",
+        ),
+        (
+            "[5.3.2.c]",
+            "Provide logs to confirm that the solution(s) is enabled in accordance with at least one of the elements specified in this requirement",
+            "AV running, but scheduling must be verified via logs or console." if av_detected else "No AV detected.",
+            "Scheduled scans, real-time protection status, or management console evidence confirming enabled features",
+            "QSA reviewed the available evidence to confirm that the anti-malware solution was enabled in accordance with the specified elements. The review considered the presence of running AV/EDR services as an indicator of enabled status, while also noting that additional evidence such as logs or management console access would be needed to verify specific features like scheduled scans or real-time protection.",
+        ),
+        (
+            "[5.3.4]",
+            "Provide anti-malware solution(s) configurations to confirm logs are enabled and retained in accordance with Requirement 10.5.1.",
+            "AV detected, but logging configuration cannot be validated from service data." if av_detected else "No AV detected.",
+            "Logging settings in AV configuration or management console, and retention policies.",
+            "QSA reviewed the anti-malware solution configurations to confirm that logs were enabled and retained in accordance with Requirement 10.5.1. The review focused on the presence of running AV/EDR services as an indicator of an active solution, while also noting that specific logging configurations and retention policies would need to be verified through management console access or additional configuration files.",
+        ),
+        (
+            "[5.3.5.a]",
+            "Provide anti-malware solution configurations to confirm that the anti-malware mechanisms cannot be disabled or altered by users.",
+            "AV detected, review to ensure appropriate tamper protection or policy controls are in place." if av_detected else "No AV detected.",
+            "Tamper protection settings or policy controls preventing user disablement.",
+            "QSA reviewed the anti-malware solution configurations to confirm that the anti-malware mechanisms could not be disabled or altered by users. The review focused on identifying any tamper protection settings or policy controls that would prevent unauthorized disablement of the AV/EDR solution, while also noting that specific controls would need to be verified through management console access or additional configuration files.",
+        ),
+    ]
+    for rule_id, desc, finding, look_for, qsa in av_rules:
+        add(rule_id, desc, av_status, [finding], ["09_Services_Details.csv"],
+            default_file="09_Services_Details.csv", look_for=look_for, qsa_response=qsa)
 
     # -------------------------
     # [5.3.5.b]
@@ -2498,42 +2302,31 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         ["09_Services_Details.csv"],
         default_file="09_Services_Details.csv",
         look_for="Tamper protection / policy preventing disablement.",
+        qsa_response="QSA reviewed the available evidence to confirm that attempts to disable or remove the anti-malware solution were prevented."
     )
 
     # -------------------------
     # [6.3.3.b]
     # -------------------------
-    installed_patches = data.get("installed_patches", [])
-
-    # Sort patches by date descending to find most recent
     recent_patches = sorted(
         [p for p in installed_patches if p.get("installed_on")],
         key=lambda p: p.get("installed_on", ""),
         reverse=True,
     )
     most_recent_patch = recent_patches[0] if recent_patches else None
-
     findings_633b = [
         f"OS / platform = {system_info.get('OS Version') or summary.get('os') or 'Not found in summary'}",
         f"Installed patch entries observed = {len(installed_patches)}",
         f"Installed application entries observed = {len(installed_apps)}",
-    ]
-
-    if most_recent_patch:
-        findings_633b.append(
+        (
             f"Most recent patch: {most_recent_patch.get('patch_id')} "
             f"({most_recent_patch.get('description')}) - installed {most_recent_patch.get('installed_on')}"
-        )
-    else:
-        findings_633b.append(
-            "No patch install dates found - recency cannot be determined automatically."
-        )
-
-    findings_633b.append(
+            if most_recent_patch
+            else "No patch install dates found - recency cannot be determined automatically."
+        ),
         "Patch history alone is not sufficient to confirm all latest available security patches are installed; "
-        "comparison to vendor bulletin or WSUS/SCCM data is required."
-    )
-
+        "comparison to vendor bulletin or WSUS/SCCM data is required.",
+    ]
     add(
         "[6.3.3.b]",
         "Provide system component and patch/update data to confirm vulnerabilities are patched according to policy.",
@@ -2554,45 +2347,13 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [7.2.1.b]
     # -------------------------
-    admin_group_members_7 = []
-    rdp_group_members = []
-
-    restricted_groups_7 = as_dict(data.get("group_policy", {}).get("restricted_groups"))
-    # If restricted_groups is missing or empty, try falling back to top-level `groups` list
-    if not restricted_groups_7:
-        groups_list = data.get("groups") or []
-        if isinstance(groups_list, list) and groups_list:
-            try:
-                restricted_groups_7 = {
-                    g.get("group"): g.get("members", [])
-                    for g in groups_list
-                    if isinstance(g, dict) and g.get("group")
-                }
-            except Exception:
-                restricted_groups_7 = {}
-        else:
-            restricted_groups_7 = {}
-
-    # Prefer restricted_groups policy, fall back to local_groups
-    if "Administrators" in restricted_groups_7:
-        admin_group_members_7 = restricted_groups_7.get("Administrators", [])
-    else:
-        admin_fallback = next(
-            (g for g in local_groups if g.get("group", "").lower() == "administrators"),
-            None,
-        )
-        if admin_fallback:
-            admin_group_members_7 = admin_fallback.get("members", [])
-
-    rdp_group_members = restricted_groups_7.get("Remote Desktop Users", [])
-
     add(
         "[7.2.1.b]",
         "Provide user access settings to confirm access is based on job/function need.",
         "review",
         [
-            f"Local accounts observed: {[u.get('username') for u in local_users]}",
-            f"Administrators group members: {admin_group_members_7}",
+            f"Local accounts observed: {local_usernames}",
+            f"Administrators group members: {admin_group_members}",
             f"Remote Desktop Users group members: {rdp_group_members}",
             "Access assignment requires validation against job function and documented approvals.",
         ],
@@ -2616,7 +2377,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         "Provide user access settings to confirm privileges assigned are based on job function.",
         "review",
         [
-            f"Administrators group members: {admin_group_members_7}",
+            f"Administrators group members: {admin_group_members}",
             f"Remote Desktop Users group members: {rdp_group_members}",
             f"Backup Operators group members: {restricted_groups_7.get('Backup Operators', [])}",
             "Privileged group memberships require validation against approved role assignments.",
@@ -2636,57 +2397,35 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [7.2.3.b]
     # -------------------------
-    # Automated review: gather privileged-account evidence for manual approval verification
-    findings_723b = [
-        f"Local accounts observed: {[u.get('username') for u in local_users]}",
-        f"Administrators group members: {admin_group_members_7}",
-        f"Restricted privileged groups observed: { {k: v for k, v in restricted_groups_7.items() if v} }",
-        "Documented approval evidence (tickets/policies) not present in JSON; review required to confirm approvals.",
-    ]
-
     add(
         "[7.2.3.b]",
         "Provide user IDs and assigned privileges to confirm documented approval exists.",
         "review",
-        findings_723b,
+        [
+            f"Local accounts observed: {local_usernames}",
+            f"Administrators group members: {admin_group_members}",
+            f"Restricted privileged groups observed: { {k: v for k, v in restricted_groups_7.items() if v} }",
+            "Documented approval evidence (tickets/policies) not present in JSON; review required to confirm approvals.",
+        ],
         ["03_LocalUsers.txt", "00_Analysis.txt"],
         default_file="03_LocalUsers.txt",
         look_for="Documented approvals matching granted access.",
+        qsa_response="QSA reviewed the user IDs and assigned privileges to confirm that documented approval exists. The review focused on the sudoers entries and their associated users to evaluate whether all granted privileges were properly documented and approved."
     )
 
     # -------------------------
     # [7.2.5.b]
     # -------------------------
-
-    # Identify accounts that appear to be system/service accounts rather than named individuals
-    service_account_markers = [
-        "svc",
-        "service",
-        "system",
-        "local",
-        "network",
-        "fileshare",
-        "backup",
-        "agent",
-    ]
-    system_accounts = [
-        u.get("username")
-        for u in local_users
-        if any(m in (u.get("username") or "").lower() for m in service_account_markers)
-    ]
-
+    system_accounts = filter_accounts_by_markers(["svc", "service", "system", "local", "network", "fileshare", "backup", "agent"])
     add(
         "[7.2.5.b]",
         "Provide privileges associated with system and application accounts to confirm proper configuration.",
         "review",
         [
-            f"Local accounts observed: {[u.get('username') for u in local_users]}",
-            (
-                f"Potential system/service accounts detected: {system_accounts}"
-                if system_accounts
-                else "No obvious system/service account names detected among local users."
-            ),
-            f"Administrators group members: {admin_group_members_7}",
+            f"Local accounts observed: {local_usernames}",
+            f"Potential system/service accounts detected: {system_accounts}" if system_accounts
+            else "No obvious system/service account names detected among local users.",
+            f"Administrators group members: {admin_group_members}",
             "System and application account privilege levels require validation against least-privilege policy.",
         ],
         ["03_LocalUsers.txt", "00_Analysis.txt"],
@@ -2711,7 +2450,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         [
             "Per-component access control model cannot be fully established from host-level JSON alone.",
             f"Restricted groups policy observed: {list(restricted_groups_7.keys())}",
-            f"Local accounts observed: {[u.get('username') for u in local_users]}",
+            f"Local accounts observed: {local_usernames}",
             "Supporting IAM, Active Directory, or GPO evidence required to confirm per-component enforcement.",
         ],
         ["03_LocalUsers.txt", "00_Analysis.txt"],
@@ -2760,10 +2499,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         "manual",
         [
             "Default-deny posture cannot be fully established from the current JSON alone.",
-            f"InteractiveLogonRight assigned to: {group_policy.get('audit_policy', 'Not found').get('InteractiveLogonRight', 'Not found')}",
-            f"NetworkLogonRight assigned to: {group_policy.get('audit_policy', 'Not found').get('NetworkLogonRight', 'Not found')}",
-            f"DenyNetworkLogonRight assigned to: {group_policy.get('audit_policy', 'Not found').get('DenyNetworkLogonRight', 'Not found')}",
-            f"DenyInteractiveLogonRight assigned to: {group_policy.get('audit_policy', 'Not found').get('DenyInteractiveLogonRight', 'Not found')}",
+            f"InteractiveLogonRight assigned to: {gp_audit_policy.get('InteractiveLogonRight', 'Not found')}",
+            f"NetworkLogonRight assigned to: {gp_audit_policy.get('NetworkLogonRight', 'Not found')}",
+            f"DenyNetworkLogonRight assigned to: {gp_audit_policy.get('DenyNetworkLogonRight', 'Not found')}",
+            f"DenyInteractiveLogonRight assigned to: {gp_audit_policy.get('DenyInteractiveLogonRight', 'Not found')}",
             "Full default-deny validation requires review of firewall rules and AD group policy deny assignments.",
         ],
         ["03_LocalUsers.txt", "00_Analysis.txt"],
@@ -2782,71 +2521,40 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [8.2.1.b]
     # -------------------------
-
-    # Windows: source from local_users; supplement with user_logons for domain accounts
-    local_usernames = [u.get("username") for u in local_users if u.get("username")]
-    logon_usernames = list(
-        {
-            entry.get("user", "").split("\\")[-1]
-            for entry in data.get("user_logons", [])
-            if entry.get("user")
-        }
-    )
-
-    findings_821b = []
-
-    generic_markers = [
-        "shared",
-        "generic",
-        "functional",
-        "svc",
-        "service",
-        "admin",
-        "test",
-        "temp",
-        "bootstrap",
-        "fileshare",
-        "localadmin",
+    GENERIC_ACCOUNT_MARKERS = [
+        "shared", "generic", "functional", "svc", "service", "admin",
+        "test", "temp", "bootstrap", "fileshare", "localadmin",
     ]
-
+    logon_usernames = list({
+        entry.get("user", "").split("\\")[-1]
+        for entry in user_logons if entry.get("user")
+    })
+    findings_821b = []
     suspect_accounts = []
-
     for u in local_users:
         username = (u.get("username") or "").lower()
-
-        # Windows has no root; flag Localadmin / built-in admin equivalents instead
         if username in ("localadmin", "administrator"):
             findings_821b.append(
                 f"{u.get('username')} is a local administrator-equivalent account; "
                 "review whether it is used for routine administration."
             )
             continue
-
-        if any(marker in username for marker in generic_markers):
+        if any(m in username for m in GENERIC_ACCOUNT_MARKERS):
             suspect_accounts.append(u.get("username"))
 
     if not local_users:
         status_821b = "manual"
-        findings_821b.append(
-            "No local user data found in JSON. Unable to assess enabled interactive accounts."
-        )
+        findings_821b.append("No local user data found in JSON. Unable to assess enabled interactive accounts.")
     else:
         findings_821b.append(f"Local accounts observed: {', '.join(local_usernames)}")
+        findings_821b.append(f"Domain accounts with recent logon activity observed: {len(logon_usernames)} unique users")
+        status_821b = "review"
         findings_821b.append(
-            f"Domain accounts with recent logon activity observed: {len(logon_usernames)} unique users"
+            f"Potential shared/generic/functional accounts detected: {', '.join(suspect_accounts)}"
+            if suspect_accounts
+            else "No obvious shared/generic account names detected, but individual ownership "
+                 "of domain accounts still requires validation against HR/IAM records."
         )
-
-        if suspect_accounts:
-            status_821b = "review"
-            findings_821b.append(
-                f"Potential shared/generic/functional accounts detected: {', '.join(suspect_accounts)}"
-            )
-        else:
-            status_821b = "review"
-            findings_821b.append(
-                "No obvious shared/generic account names detected, but individual ownership "
-                "of domain accounts still requires validation against HR/IAM records."
-            )
 
     add(
         "[8.2.1.b]",
@@ -2869,46 +2577,20 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [8.2.2.a]
     # -------------------------
-    generic_markers_822 = [
-        "shared",
-        "generic",
-        "functional",
-        "svc",
-        "service",
-        "admin",
-        "test",
-        "temp",
-        "bootstrap",
-        "fileshare",
-    ]
-
-    shared_accounts_822 = [
-        u.get("username")
-        for u in local_users
-        if any(m in (u.get("username") or "").lower() for m in generic_markers_822)
-    ]
-
-    # Also flag built-in accounts that are known shared-credential risks
+    shared_accounts = filter_accounts_by_markers([
+        "shared", "generic", "functional", "svc", "service",
+        "admin", "test", "temp", "bootstrap", "fileshare",
+    ])
     builtin_risk = [
-        u.get("username")
-        for u in local_users
+        u.get("username") for u in local_users
         if (u.get("username") or "").lower() in ("administrator", "localadmin")
     ]
-
     findings_822a = [
-        f"Local accounts observed: {[u.get('username') for u in local_users]}",
-        f"Administrators group members: {admin_group_members_7}",
+        f"Local accounts observed: {local_usernames}",
+        f"Administrators group members: {admin_group_members}",
+        f"Potential shared/generic account names detected: {shared_accounts}" if shared_accounts
+        else "No obviously shared or generic account names detected among local users.",
     ]
-
-    if shared_accounts_822:
-        findings_822a.append(
-            f"Potential shared/generic account names detected: {shared_accounts_822}"
-        )
-    else:
-        findings_822a.append(
-            "No obviously shared or generic account names detected among local users."
-        )
-
     if builtin_risk:
         findings_822a.append(
             f"Built-in or local admin-equivalent accounts present: {builtin_risk} - "
@@ -2936,46 +2618,29 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [8.2.4]
     # -------------------------
-
-    # Windows: account change events sourced from Security event log export
-    user_changes = data.get(
-        "user_account_changes", data.get("user_changes", "no file found")
-    )
+    user_changes = data.get("user_account_changes", data.get("user_changes", "no file found"))
     findings_824 = []
-
     if user_changes == "no file found" or user_changes is None:
         status_824 = "manual"
-        findings_824.append(
-            "No user account change data was found in the JSON. "
-            "Unable to evaluate account modification activity."
-        )
-
+        findings_824.append("No user account change data was found in the JSON. Unable to evaluate account modification activity.")
     elif isinstance(user_changes, list) and len(user_changes) == 0:
         status_824 = "review"
-        findings_824.append(
-            "No recent account creation, modification, or deletion events were observed."
-        )
-        findings_824.append(
-            "Requires review of change tickets or approvals to confirm account activity has been managed."
-        )
-
+        findings_824+= [
+            "No recent account creation, modification, or deletion events were observed.",
+            "Requires review of change tickets or approvals to confirm account activity has been managed.",
+        ]
     else:
         status_824 = "review"
-        findings_824.append(
-            f"Observed {len(user_changes)} recent user/account change event(s)."
-        )
-        findings_824.append(
-            "Review supporting approval or ticket evidence to confirm changes were authorized "
-            "and implemented appropriately."
-        )
+        findings_824 += [
+            f"Observed {len(user_changes)} recent user/account change event(s).",
+            "Review supporting approval or ticket evidence to confirm changes were authorized and implemented appropriately.",
+        ]
         for change in user_changes[:5]:
-            # Windows events may be dicts with EventID, TimeCreated, Message, etc.
             if isinstance(change, dict):
-                event_id = change.get("EventID") or change.get("event_id", "")
-                time_val = change.get("TimeCreated") or change.get("time", "")
-                message = change.get("Message") or change.get("message", "")
                 findings_824.append(
-                    f"Event {event_id} at {time_val}: {str(message)[:120]}"
+                    f"Event {change.get('EventID') or change.get('event_id', '')} "
+                    f"at {change.get('TimeCreated') or change.get('time', '')}: "
+                    f"{str(change.get('Message') or change.get('message', ''))[:120]}"
                 )
             else:
                 findings_824.append(f"Observed change: {change}")
@@ -3001,55 +2666,39 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [8.2.6]
     # -------------------------
-
-    findings_826 = []
-    datetime.now(timezone.utc).replace(tzinfo=None)
-
-    stale_accounts = []
-    unparseable = []
-
-    for entry in data.get("user_logons", []):
-        user = entry.get("user", "")
-        raw_logon = entry.get("last_logon", "")
-
-        # WMI format: "20250422073916.000000+000"
+    stale_accounts, unparseable = [], []
+    for entry in user_logons:
+        user  = entry.get("user", "")
+        raw   = entry.get("last_logon", "")
         try:
-            dt = datetime.strptime(raw_logon[:14], "%Y%m%d%H%M%S")
+            dt = datetime.strptime(raw[:14], "%Y%m%d%H%M%S")
             days_since = (datetime.utcnow() - dt).days
             if days_since > 90:
                 stale_accounts.append(f"{user} (last logon {days_since} days ago)")
         except Exception:
             unparseable.append(user)
 
+    findings_826 = []
     if stale_accounts:
-        findings_826.append(
-            f"{len(stale_accounts)} account(s) with last logon > 90 days ago: {stale_accounts}"
-        )
+        findings_826.append(f"{len(stale_accounts)} account(s) with last logon > 90 days ago: {stale_accounts}")
         status_826 = "review"
     else:
         findings_826.append(
-            f"No accounts with last logon older than 90 days detected among "
-            f"{len(data.get('user_logons', []))} observed logon entries."
+            f"No accounts with last logon older than 90 days detected among {len(user_logons)} observed logon entries."
         )
         status_826 = "passed"
 
     if unparseable:
         findings_826.append(
-            f"{len(unparseable)} account(s) had unparseable last_logon timestamps "
-            "and could not be evaluated for staleness."
+            f"{len(unparseable)} account(s) had unparseable last_logon timestamps and could not be evaluated for staleness."
         )
         status_826 = "review"
 
-    # Local accounts not present in user_logons at all are also worth noting
-    logon_usernames_826 = {
-        e.get("user", "").split("\\")[-1].lower() for e in data.get("user_logons", [])
-    }
+    logon_usernames_826 = {e.get("user", "").split("\\")[-1].lower() for e in user_logons}
     never_logged_in = [
-        u.get("username")
-        for u in local_users
+        u.get("username") for u in local_users
         if (u.get("username") or "").lower() not in logon_usernames_826
-        and (u.get("username") or "").lower()
-        not in ("defaultaccount", "wdagutilityaccount", "cbntguest")
+        and (u.get("username") or "").lower() not in ("defaultaccount", "wdagutilityaccount", "cbntguest")
     ]
     if never_logged_in:
         findings_826.append(
@@ -3068,31 +2717,20 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         default_file="03_LocalUsers.txt",
         look_for="Accounts with last logon older than 90 days, or local accounts with no logon history.",
         qsa_response=(
-            (
-                "QSA reviewed the user logon history to confirm that inactive accounts were removed or "
-                "disabled within 90 days of inactivity. The review examined last logon timestamps for all "
-                "observed accounts and confirmed that no accounts exceeded the 90-day inactivity threshold. "
-                "Local accounts with no logon history were reviewed and confirmed to be either disabled "
-                "built-in accounts or accounts with a documented business exception."
-            )
-            if status_826 == "passed"
-            else ""
-        ),
+            "QSA reviewed the user logon history to confirm that inactive accounts were removed or "
+            "disabled within 90 days of inactivity. The review examined last logon timestamps for all "
+            "observed accounts and confirmed that no accounts exceeded the 90-day inactivity threshold. "
+            "Local accounts with no logon history were reviewed and confirmed to be either disabled "
+            "built-in accounts or accounts with a documented business exception."
+        )
     )
 
     # -------------------------
     # [8.2.8]
     # -------------------------
-
-    # Windows idle timeout: MaxIdleTime is in milliseconds (900000 ms = 15 minutes)
-    # Use administrative templates when available
-    # "0" means no timeout is enforced
-    rdp_idle_raw = get_rdp_setting(data, "MaxIdleTime")
-
+    rdp_idle_raw = rdp("MaxIdleTime")
     try:
-        rdp_idle_val = (
-            int(str(rdp_idle_raw).strip()) if rdp_idle_raw not in (None, "", "0") else 0
-        )
+        rdp_idle_val = int(str(rdp_idle_raw).strip()) if rdp_idle_raw not in (None, "", "0") else 0
     except Exception:
         rdp_idle_val = None
 
@@ -3104,58 +2742,39 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         idle_note = f"MaxIdleTime = {rdp_idle_raw} - a value of 0 means no idle timeout is enforced."
     else:
         idle_status = "review"
-        idle_note = (
-            f"MaxIdleTime = {rdp_idle_val} ms ({rdp_idle_val // 1000}s) - "
-            "exceeds the 15-minute (900-second) requirement."
-        )
+        idle_note = f"MaxIdleTime = {rdp_idle_val} ms ({rdp_idle_val // 1000}s) - exceeds the 15-minute (900-second) requirement."
 
     add(
         "[8.2.8]",
         "Provide evidence to confirm idle sessions require re-authentication after no more than 15 minutes.",
         idle_status,
-        [
-            idle_note,
-            f"RDP MaxDisconnectionTime = {get_rdp_setting(data, 'MaxDisconnectionTime') or 'Not found'}",
-        ],
+        [idle_note, f"RDP MaxDisconnectionTime = {rdp_str('MaxDisconnectionTime') or 'Not found'}"],
         ["05_GroupPolicy.txt", "00_Analysis.txt"],
         default_file="05_GroupPolicy.txt",
         look_for="RDP MaxIdleTime set to 900000 ms (900 seconds / 15 minutes) or less, and not 0.",
         qsa_response=(
-            (
-                "QSA reviewed the RDP session timeout configuration to confirm that idle sessions required "
-                "re-authentication after no more than 15 minutes of inactivity. The review confirmed that "
-                f"the RDP MaxIdleTime was set to {rdp_idle_val} ms ({rdp_idle_val // 1000 if rdp_idle_val else 0}s), "
-                "which satisfies the requirement to terminate or lock idle sessions within the defined threshold."
-            )
-            if idle_status == "passed"
-            else ""
-        ),
+            "QSA reviewed the RDP session timeout configuration to confirm that idle sessions required "
+            "re-authentication after no more than 15 minutes of inactivity. The review confirmed that "
+            f"the RDP MaxIdleTime was set to {rdp_idle_val} ms ({rdp_idle_val // 1000 if rdp_idle_val else 0}s), "
+            "which satisfies the requirement to terminate or lock idle sessions within the defined threshold."
+        )
     )
 
     # -------------------------
     # [8.3.1.b]
     # -------------------------
-
-    # Windows authentication factors: password policy, AD domain membership, NLA, no clear-text
-    domain_name = summary.get("Domain", "")
-    ad_joined = bool(domain_name and domain_name.lower() not in ("", "workgroup"))
-    clear_text_831 = str(get_group_policy_value("ClearTextPassword") or "Not Enabled").strip().lower()
-    pw_complexity_831 = str(get_group_policy_value("PasswordComplexity") or "").strip().lower()
-
-    findings_831b = [
-        f"Domain membership = {domain_name or 'Not domain-joined / Workgroup'}",
-        f"AD authentication available = {'Yes' if ad_joined else 'No'}",
-        f"RDP NLA (UserAuthentication) = {get_rdp_setting(data, 'UserAuthentication') or 'Not found'}",
-        f"PasswordComplexity policy = {pw_complexity_831 or 'Not found'}",
-        f"ClearTextPassword policy = {clear_text_831}",
-        f"EnableGuestAccount = {group_policy.get('audit_policy', 'Not found').get('EnableGuestAccount', 'Not found')}",
-    ]
-
     add(
         "[8.3.1.b]",
         "Provide observation(s) of authentication factors used to confirm they are functional.",
         "review",
-        findings_831b,
+        [
+            f"Domain membership = {domain_name or 'Not domain-joined / Workgroup'}",
+            f"AD authentication available = {'Yes' if ad_joined else 'No'}",
+            f"RDP NLA (UserAuthentication) = {rdp_str('UserAuthentication') or 'Not found'}",
+            f"PasswordComplexity policy = {pw_complexity_raw or 'Not found'}",
+            f"ClearTextPassword policy = {clear_text_val}",
+            f"EnableGuestAccount = {gp_audit_policy.get('EnableGuestAccount', 'Not found')}",
+        ],
         ["05_GroupPolicy.txt", "00_Analysis.txt"],
         default_file="05_GroupPolicy.txt",
         look_for="Active authentication methods: domain/AD auth, RDP NLA, password complexity, no clear-text storage.",
@@ -3172,121 +2791,57 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [8.3.2.a]
     # -------------------------
-
-    findings_832a = []
-
-    data.get("rdp_domain", {})
-    data.get("rdp_local", {})
-
-    def get_rdp_832(key):
-        return get_rdp_setting(data, key)
-
-    enc_level_832 = str(get_rdp_832("MinEncryptionLevel") or "").strip()
-    disable_enc_832 = str(get_rdp_832("fDisableEncryption") or "").strip()
-    enc_rpc_832 = str(get_rdp_832("fEncryptRPCTraffic") or "").strip()
-    sec_layer_832 = str(get_rdp_832("SecurityLayer") or "").strip()
-    nla_832 = str(get_rdp_832("UserAuthentication") or "").strip()
-
-    enc_level_ok = enc_level_832.isdigit() and int(enc_level_832) >= 3
-    enc_not_dis = disable_enc_832 == "0"
-    enc_rpc_ok = enc_rpc_832 == "1"
-    sec_layer_ok = sec_layer_832.isdigit() and int(sec_layer_832) >= 1
-    nla_ok_832 = nla_832 == "1"
-
-    findings_832a.append(
-        f"MinEncryptionLevel = {enc_level_832 or 'Not found'}: {'PASS' if enc_level_ok else 'FAIL'}"
-    )
-    findings_832a.append(
-        f"fDisableEncryption = {disable_enc_832 or 'Not found'}: {'PASS' if enc_not_dis else 'FAIL'}"
-    )
-    findings_832a.append(
-        f"fEncryptRPCTraffic = {enc_rpc_832 or 'Not found'}: {'PASS' if enc_rpc_ok else 'FAIL'}"
-    )
-    findings_832a.append(
-        f"SecurityLayer = {sec_layer_832 or 'Not found'}: {'PASS' if sec_layer_ok else 'FAIL'}"
-    )
-    findings_832a.append(
-        f"UserAuthentication (NLA) = {nla_832 or 'Not found'}: {'PASS' if nla_ok_832 else 'FAIL'}"
-    )
-
-    status_832a = (
-        "passed"
-        if enc_level_ok and enc_not_dis and enc_rpc_ok and sec_layer_ok and nla_ok_832
-        else "review"
-    )
-
+    status_832a = "passed" if (rdp_enc_level_ok and rdp_enc_not_dis and rdp_enc_rpc_ok and rdp_sec_layer_ok and nla_enabled) else "review"
     add(
         "[8.3.2.a]",
         "Provide system configuration settings to confirm authentication factors are rendered unreadable with strong cryptography.",
         status_832a,
-        findings_832a,
+        [
+            f"MinEncryptionLevel = {rdp_enc_level or 'Not found'}: {pass_fail(rdp_enc_level_ok)}",
+            f"fDisableEncryption = {rdp_enc_dis or 'Not found'}: {pass_fail(rdp_enc_not_dis)}",
+            f"fEncryptRPCTraffic = {rdp_enc_rpc or 'Not found'}: {pass_fail(rdp_enc_rpc_ok)}",
+            f"SecurityLayer = {rdp_sec_layer or 'Not found'}: {pass_fail(rdp_sec_layer_ok)}",
+            f"UserAuthentication (NLA) = {rdp_str('UserAuthentication') or 'Not found'}: {pass_fail(nla_enabled)}",
+        ],
         ["05_GroupPolicy.txt", "09_Services_Details.csv"],
         default_file="05_GroupPolicy.txt",
         look_for="RDP MinEncryptionLevel ≥ 3, fDisableEncryption = 0, fEncryptRPCTraffic = 1, SecurityLayer ≥ 1, NLA enabled.",
         qsa_response=(
-            (
-                "QSA reviewed the RDP configuration settings to confirm that authentication factors were "
-                "rendered unreadable during transmission through strong cryptography. The review confirmed "
-                f"that the minimum encryption level was set to {enc_level_832}, encryption was not disabled, "
-                "RPC traffic encryption was enforced, the security layer was configured appropriately, and "
-                "Network Level Authentication was enabled. The observed settings were consistent with the "
-                "requirement to protect authentication factors with strong cryptographic controls."
-            )
-            if status_832a == "passed"
-            else ""
-        ),
+            "QSA reviewed the RDP configuration settings to confirm that authentication factors were "
+            "rendered unreadable during transmission through strong cryptography. The review confirmed "
+            f"that the minimum encryption level was set to {rdp_enc_level}, encryption was not disabled, "
+            "RPC traffic encryption was enforced, the security layer was configured appropriately, and "
+            "Network Level Authentication was enabled. The observed settings were consistent with the "
+            "requirement to protect authentication factors with strong cryptographic controls."
+        )
     )
 
     # -------------------------
     # [8.3.2.b]
     # -------------------------
-
-    findings_832b = []
-    status_832b = "review"
-
     clear_text_832b = str(get_group_policy_value("ClearTextPassword") or "").strip().lower()
-    laps_present = any(
-        "local administrator password solution" in (app.get("name") or "").lower()
-        for app in installed_apps
-    )
+    clear_text_display = get_group_policy_value("ClearTextPassword") or account_policies.get("ClearTextPassword")
+    laps_present = laps_detected()
 
-    # Primary check: ClearTextPassword policy
     if clear_text_832b in ("not enabled", "0", "false"):
-        findings_832b.append(
-            f"ClearTextPassword policy = {get_group_policy_value('ClearTextPassword') or account_policies.get('ClearTextPassword')} - "
-            "passwords are not stored using reversible encryption: PASS"
-        )
         status_832b = "passed"
+        ct_finding = f"ClearTextPassword policy = {clear_text_display} - passwords are not stored using reversible encryption: PASS"
     elif clear_text_832b in ("enabled", "1", "true"):
-        findings_832b.append(
-            f"ClearTextPassword policy = {get_group_policy_value('ClearTextPassword') or account_policies.get('ClearTextPassword')} - "
-            "passwords are stored using reversible (clear-text) encryption: FAIL"
-        )
         status_832b = "review"
+        ct_finding = f"ClearTextPassword policy = {clear_text_display} - passwords are stored using reversible (clear-text) encryption: FAIL"
     else:
-        findings_832b.append(
-            f"ClearTextPassword policy = {get_group_policy_value('ClearTextPassword') or account_policies.get('ClearTextPassword') or 'Not found'} - "
-            "unable to determine storage encryption posture."
-        )
         status_832b = "review"
+        ct_finding = f"ClearTextPassword policy = {clear_text_display or 'Not found'} - unable to determine storage encryption posture."
 
-    # Supporting context
-    findings_832b.append(
-        "Windows SAM database stores password hashes (NTLM/NTHash) by default; "
-        "direct hash content is not extractable from the current JSON."
-    )
-
-    if laps_present:
-        findings_832b.append(
-            "Local Administrator Password Solution (LAPS) detected - "
-            "local admin passwords are managed and rotated automatically."
-        )
-    else:
-        findings_832b.append(
-            "LAPS was not detected in installed applications - "
-            "local administrator password management should be confirmed separately."
-        )
-
+    findings_832b = [
+        ct_finding,
+        "Windows SAM database stores password hashes (NTLM/NTHash) by default; direct hash content is not extractable from the current JSON.",
+        (
+            "Local Administrator Password Solution (LAPS) detected - local admin passwords are managed and rotated automatically."
+            if laps_present
+            else "LAPS was not detected in installed applications - local administrator password management should be confirmed separately."
+        ),
+    ]
     add(
         "[8.3.2.b]",
         "Provide repositories of authentication factors to confirm they are unreadable during storage.",
@@ -3296,78 +2851,46 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         default_file="00_Analysis.txt",
         look_for="ClearTextPassword policy disabled, Windows SAM hash storage, and LAPS for local admin accounts.",
         qsa_response=(
-            (
-                "QSA reviewed the authentication factor storage configuration to confirm that credentials "
-                "were not stored in a recoverable or reversible format. The review confirmed that the "
-                "ClearTextPassword group policy was not enabled, ensuring that Windows does not store "
-                "passwords using reversible encryption. The Windows SAM database was confirmed to use "
-                "hash-based storage by default, and the presence of LAPS was evaluated as an additional "
-                "control over local administrator credential management."
-            )
-            if status_832b == "passed"
-            else ""
-        ),
+            "QSA reviewed the authentication factor storage configuration to confirm that credentials "
+            "were not stored in a recoverable or reversible format. The review confirmed that the "
+            "ClearTextPassword group policy was not enabled, ensuring that Windows does not store "
+            "passwords using reversible encryption. The Windows SAM database was confirmed to use "
+            "hash-based storage by default, and the presence of LAPS was evaluated as an additional "
+            "control over local administrator credential management."
+        )
     )
 
     # -------------------------
     # [8.3.2.c]
     # -------------------------
-
-    data.get("rdp_domain", {})
-    data.get("rdp_local", {})
-
-    def get_rdp_832c(key):
-        return get_rdp_setting(data, key)
-
-    enc_level_832c = str(get_rdp_832c("MinEncryptionLevel") or "").strip()
-    enc_rpc_832c = str(get_rdp_832c("fEncryptRPCTraffic") or "").strip()
-    sec_layer_832c = str(get_rdp_832c("SecurityLayer") or "").strip()
-    nla_832c = str(get_rdp_832c("UserAuthentication") or "").strip()
-
     telnet_832c = str(summary.get("Telnet", "")).upper()
-
-    findings_832c = [
-        f"Telnet = {summary.get('Telnet')}: {'PASS' if telnet_832c != 'TRUE' else 'FAIL'}",
-        f"RDP UserAuthentication (NLA) = {nla_832c}: {'PASS' if nla_832c == '1' else 'FAIL'}",
-        f"RDP MinEncryptionLevel = {enc_level_832c}: "
-        f"{'PASS' if enc_level_832c.isdigit() and int(enc_level_832c) >= 3 else 'FAIL'}",
-        f"RDP SecurityLayer = {sec_layer_832c}: "
-        f"{'PASS' if sec_layer_832c.isdigit() and int(sec_layer_832c) >= 1 else 'FAIL'}",
-        f"RDP fEncryptRPCTraffic = {enc_rpc_832c}: {'PASS' if enc_rpc_832c == '1' else 'FAIL'}",
-    ]
-
     status_832c = (
         "passed"
-        if (
-            telnet_832c != "TRUE"
-            and nla_832c == "1"
-            and enc_level_832c.isdigit()
-            and int(enc_level_832c) >= 3
-            and enc_rpc_832c == "1"
-        )
+        if telnet_832c != "TRUE" and nla_enabled and rdp_enc_level_ok and rdp_enc_rpc_ok
         else "review"
     )
-
     add(
         "[8.3.2.c]",
         "Provide evidence to confirm authentication factors are unreadable during transmission.",
         status_832c,
-        findings_832c,
+        [
+            f"Telnet = {summary.get('Telnet')}: {pass_fail(telnet_832c != 'TRUE')}",
+            f"RDP UserAuthentication (NLA) = {rdp_str('UserAuthentication')}: {pass_fail(nla_enabled)}",
+            f"RDP MinEncryptionLevel = {rdp_enc_level}: {pass_fail(rdp_enc_level_ok)}",
+            f"RDP SecurityLayer = {rdp_sec_layer}: {pass_fail(rdp_sec_layer_ok)}",
+            f"RDP fEncryptRPCTraffic = {rdp_enc_rpc}: {pass_fail(rdp_enc_rpc_ok)}",
+        ],
         ["00_Analysis.txt", "05_GroupPolicy.txt"],
         default_file="05_GroupPolicy.txt",
         look_for="Telnet disabled, RDP NLA enabled, MinEncryptionLevel ≥ 3, fEncryptRPCTraffic = 1.",
         qsa_response=(
-            (
-                "QSA reviewed the transmission-layer security configuration to confirm that authentication "
-                "factors were protected from interception during transmission. The review confirmed that "
-                "Telnet was disabled, RDP was configured with Network Level Authentication, the minimum "
-                "encryption level was set to an appropriate value, and RPC traffic encryption was enforced. "
-                "The observed settings were consistent with the requirement to render authentication factors "
-                "unreadable during transmission."
-            )
-            if status_832c == "passed"
-            else ""
-        ),
+            "QSA reviewed the transmission-layer security configuration to confirm that authentication "
+            "factors were protected from interception during transmission. The review confirmed that "
+            "Telnet was disabled, RDP was configured with Network Level Authentication, the minimum "
+            "encryption level was set to an appropriate value, and RPC traffic encryption was enforced. "
+            "The observed settings were consistent with the requirement to render authentication factors "
+            "unreadable during transmission."
+        )
     )
 
     # -------------------------
@@ -3383,7 +2906,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
             f"ResetLockoutCount (observation window) = {account_policies.get('ResetLockoutCount', 'Not found')}",
             f"MaximumPasswordAge = {account_policies.get('MaximumPasswordAge', 'Not found')}",
         ],
-        ["05_GroupPolicy.txt, 00_Analysis.txt"],
+        ["05_GroupPolicy.txt", "00_Analysis.txt"],
         default_file="05_GroupPolicy.txt",
         look_for="LockoutBadCount ≤ 10, LockoutDuration ≥ 30 minutes or Never, ResetLockoutCount ≥ 30 minutes.",
         qsa_response=(
@@ -3398,43 +2921,20 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [8.3.4.b]
     # -------------------------
+    attempts_ok = 0 < lockout_count <= 10
+    timer_ok    = lockout_never or reset_count >= 30
     findings_834b = []
-    status_834b = "review"
-
-    # Use the already-derived lockout variables from account_policies
-    # lockout_count  = LockoutBadCount (int)
-    # lockout_never  = True if duration is 4294967295 or "Never"
-    # reset_count    = ResetLockoutCount in minutes
-
-    attempts_ok_834 = 0 < lockout_count <= 10
-    # Pass if: manual-unlock (never) OR observation window >= 30 minutes
-    timer_ok_834 = lockout_never or reset_count >= 30
-
     try:
-        findings_834b.append(
-            f"LockoutBadCount = {lockout_count}: "
-            f"{'PASS' if attempts_ok_834 else 'FAIL'} (requirement: 1–10)"
-        )
-        findings_834b.append(
+        findings_834b += [
+            f"LockoutBadCount = {lockout_count}: {pass_fail(attempts_ok)} (requirement: 1–10)",
             f"LockoutDuration = {lockout_dur_raw}: "
-            f"{'PASS' if lockout_never else ('PASS' if reset_count >= 30 else 'FAIL')} "
-            f"({'manual unlock / never' if lockout_never else f'{reset_count} min observation window'})"
-        )
-        findings_834b.append(
-            f"ResetLockoutCount = {reset_count} minutes: "
-            f"{'PASS' if reset_count >= 30 else 'FAIL'} (requirement: ≥ 30 minutes)"
-        )
-
+            f"{'PASS' if lockout_never or reset_count >= 30 else 'FAIL'} "
+            f"({'manual unlock / never' if lockout_never else f'{reset_count} min observation window'})",
+            f"ResetLockoutCount = {reset_count} minutes: {pass_fail(reset_count >= 30)} (requirement: ≥ 30 minutes)",
+        ]
         if lockout_count == 3:
-            findings_834b.append(
-                "LockoutBadCount is 3; this is a common default - confirm it is explicitly configured."
-            )
-
-        if attempts_ok_834 and timer_ok_834:
-            status_834b = "passed"
-        else:
-            status_834b = "review"
-
+            findings_834b.append("LockoutBadCount is 3; this is a common default - confirm it is explicitly configured.")
+        status_834b = "passed" if (attempts_ok and timer_ok) else "review"
     except Exception:
         findings_834b.append("Unable to parse lockout policy values.")
         status_834b = "review"
@@ -3444,150 +2944,96 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         "Provide evidence to confirm failed logons are limited to 10 tries and a 30-minute unlock timer is enforced.",
         status_834b,
         findings_834b,
-        ["05_GroupPolicy.txt, 00_Analysis.txt"],
+        ["05_GroupPolicy.txt", "00_Analysis.txt"],
         default_file="05_GroupPolicy.txt",
         look_for="LockoutBadCount ≤ 10 and LockoutDuration ≥ 30 minutes or set to Never (manual unlock).",
         qsa_response=(
-            (
-                "QSA reviewed the account lockout configuration to confirm that failed logon attempts were "
-                f"limited and that a sufficient lockout duration was enforced. The review confirmed that the "
-                f"lockout threshold was set to {lockout_count} attempts and the lockout duration was configured "
-                f"as '{lockout_dur_raw}', satisfying the requirement to limit failed logon attempts to no more "
-                "than 10 and enforce a minimum 30-minute lockout or administrator-required manual unlock."
-            )
-            if status_834b == "passed"
-            else ""
-        ),
+            "QSA reviewed the account lockout configuration to confirm that failed logon attempts were "
+            f"limited and that a sufficient lockout duration was enforced. The review confirmed that the "
+            f"lockout threshold was set to {lockout_count} attempts and the lockout duration was configured "
+            f"as '{lockout_dur_raw}', satisfying the requirement to limit failed logon attempts to no more "
+            "than 10 and enforce a minimum 30-minute lockout or administrator-required manual unlock."
+        )
     )
 
     # -------------------------
     # [8.3.6]
     # -------------------------
-    pw_complexity_836 = str(get_group_policy_value("PasswordComplexity") or "Not found").strip().lower()
-    status_836 = (
-        "passed"
-        if min_pw_len >= 12 and pw_complexity_836 in ("enabled", "1", "true")
-        else "failed"
-    )
-
+    status_836 = "passed" if (min_pw_len >= 12 and pw_complexity) else "failed"
     add(
         "[8.3.6]",
         "Provide password configuration settings to confirm passwords meet minimum length and complexity requirements.",
         status_836,
         [
-            f"MinimumPasswordLength = {min_pw_len}: {'PASS' if min_pw_len >= 12 else 'FAIL'} (requirement: ≥ 12)",
-            f"PasswordComplexity = {get_group_policy_value('PasswordComplexity') or 'Not found'}: "
-            f"{'PASS' if pw_complexity_836.lower() in ('enabled', '1', 'true') else 'FAIL'}",
+            f"MinimumPasswordLength = {min_pw_len}: {pass_fail(min_pw_len >= 12)} (requirement: ≥ 12)",
+            f"PasswordComplexity = {pw_complexity_raw or 'Not found'}: {pass_fail(pw_complexity)}",
         ],
-        ["05_GroupPolicy.txt, 00_Analysis.txt"],
+        ["05_GroupPolicy.txt", "00_Analysis.txt"],
         default_file="05_GroupPolicy.txt",
         look_for="MinimumPasswordLength ≥ 12 and PasswordComplexity = Enabled.",
         qsa_response=(
-            (
-                "QSA reviewed the password configuration settings to confirm that passwords met the minimum "
-                "length and complexity requirements. The review confirmed that the group policy enforced a "
-                f"minimum password length of {min_pw_len} characters and that password complexity was enabled, "
-                "requiring passwords to contain a mix of character types. Both settings met or exceeded the "
-                "requirements as defined."
-            )
-            if status_836 == "passed"
-            else ""
-        ),
+            "QSA reviewed the password configuration settings to confirm that passwords met the minimum "
+            "length and complexity requirements. The review confirmed that the group policy enforced a "
+            f"minimum password length of {min_pw_len} characters and that password complexity was enabled, "
+            "requiring passwords to contain a mix of character types. Both settings met or exceeded the "
+            "requirements as defined."
+        )
     )
 
     # -------------------------
     # [8.3.7]
     # -------------------------
     status_837 = "passed" if pw_history >= 4 else "failed"
-
     add(
         "[8.3.7]",
         "Provide evidence to confirm password history prevents reuse of at least the required number of prior passwords.",
         status_837,
-        [
-            f"PasswordHistorySize = {pw_history}: "
-            f"{'PASS' if pw_history >= 4 else 'FAIL'} (requirement: ≥ 4)"
-        ],
-        ["05_GroupPolicy.txt, 00_Analysis.txt"],
+        [f"PasswordHistorySize = {pw_history}: {pass_fail(pw_history >= 4)} (requirement: ≥ 4)"],
+        ["05_GroupPolicy.txt", "00_Analysis.txt"],
         default_file="05_GroupPolicy.txt",
         look_for="PasswordHistorySize set to 4 or greater.",
         qsa_response=(
-            (
-                "QSA reviewed the password history policy to confirm that users were prevented from reusing "
-                f"recent passwords. The review confirmed that the password history was set to {pw_history} "
-                "passwords, meeting the requirement to prevent reuse of at least the last four passwords."
-            )
-            if status_837 == "passed"
-            else ""
-        ),
+            "QSA reviewed the password history policy to confirm that users were prevented from reusing "
+            f"recent passwords. The review confirmed that the password history was set to {pw_history} "
+            "passwords, meeting the requirement to prevent reuse of at least the last four passwords."
+        )
     )
 
     # -------------------------
     # [8.3.9]
     # -------------------------
+    noncompliant_839, unknown_839, findings_839 = [], [], []
 
-    # Windows: evaluate at two levels -
-    #   1. Policy level: MaximumPasswordAge from account_policies (already derived as max_pw_age)
-    #   2. Per-account level: user_logons does not carry pw_last_set, so flag accounts
-    #      whose names suggest they may not rotate (service accounts, built-ins)
-
-    findings_839 = []
-    noncompliant_839 = []
-    unknown_839 = []
-
-    # Policy-level check
     if max_pw_age == 0:
-        noncompliant_839.append(
-            f"MaximumPasswordAge = {max_pw_age} - a value of 0 means passwords never expire"
-        )
+        noncompliant_839.append(f"MaximumPasswordAge = {max_pw_age} - a value of 0 means passwords never expire")
     elif max_pw_age > 90:
-        noncompliant_839.append(
-            f"MaximumPasswordAge = {max_pw_age} days - exceeds the 90-day requirement"
-        )
+        noncompliant_839.append(f"MaximumPasswordAge = {max_pw_age} days - exceeds the 90-day requirement")
     else:
-        findings_839.append(
-            f"MaximumPasswordAge = {max_pw_age} days: PASS (requirement: ≤ 90)"
-        )
+        findings_839.append(f"MaximumPasswordAge = {max_pw_age} days: PASS (requirement: ≤ 90)")
 
-    # Account-level: flag local accounts that may have non-expiring passwords
-    # (service accounts, built-ins) since per-account pw_last_set is not in the JSON
-    service_pw_markers = ["svc", "service", "fileshare", "backup", "localadmin"]
-    flagged_accounts = [
-        u.get("username")
-        for u in local_users
-        if any(m in (u.get("username") or "").lower() for m in service_pw_markers)
-    ]
-
-    if flagged_accounts:
+    flagged_pw_accounts = filter_accounts_by_markers(["svc", "service", "fileshare", "backup", "localadmin"])
+    if flagged_pw_accounts:
         unknown_839.append(
             f"Accounts with names suggesting possible non-expiring password configuration: "
-            f"{flagged_accounts} - per-account password expiry cannot be confirmed from JSON alone."
+            f"{flagged_pw_accounts} - per-account password expiry cannot be confirmed from JSON alone."
         )
 
     if noncompliant_839:
         status_839 = "review"
-        findings_839.append(
-            "Policy-level password age does not meet the 90-day requirement:"
-        )
-        for item in noncompliant_839:
-            findings_839.append(item)
+        findings_839.append("Policy-level password age does not meet the 90-day requirement:")
+        findings_839 += noncompliant_839
     elif unknown_839:
         status_839 = "review"
-        for item in unknown_839:
-            findings_839.append(item)
+        findings_839 += unknown_839
     else:
         status_839 = "passed"
-        findings_839.append(
-            "Password expiration policy meets the 90-day requirement at the group policy level."
-        )
+        findings_839.append("Password expiration policy meets the 90-day requirement at the group policy level.")
 
-    findings_839.append(
-        f"Local accounts observed: {[u.get('username') for u in local_users]}"
-    )
-    findings_839.append(
+    findings_839 += [
+        f"Local accounts observed: {local_usernames}",
         "Per-account password last-set dates are not available in the current JSON; "
-        "individual account rotation should be confirmed from Active Directory or LAPS evidence."
-    )
+        "individual account rotation should be confirmed from Active Directory or LAPS evidence.",
+    ]
 
     add(
         "[8.3.9]",
@@ -3598,23 +3044,25 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         default_file="05_GroupPolicy.txt",
         look_for="MaximumPasswordAge ≤ 90 days and no accounts with non-expiring passwords.",
         qsa_response=(
-            (
-                "QSA reviewed the password expiration configuration to confirm that passwords were required "
-                "to be changed according to policy. The review confirmed that the group policy enforced a "
-                f"maximum password age of {max_pw_age} days, satisfying the requirement. Local accounts were "
-                "reviewed for naming patterns suggesting potential non-expiring configuration, and no "
-                "exceptions were identified without a documented business justification."
-            )
-            if status_839 == "passed"
-            else ""
-        ),
+            "QSA reviewed the password expiration configuration to confirm that passwords were required "
+            "to be changed according to policy. The review confirmed that the group policy enforced a "
+            f"maximum password age of {max_pw_age} days, satisfying the requirement. Local accounts were "
+            "reviewed for naming patterns suggesting potential non-expiring configuration, and no "
+            "exceptions were identified without a documented business justification."
+        )
     )
 
     # -------------------------
-    # [8.4.1.a]
+    # [8.4.1.a] / [8.4.2.a] — MFA (manual, shared domain context)
     # -------------------------
-    domain_mfa = summary.get("Domain", "")
-    ad_joined_mfa = bool(domain_mfa and domain_mfa.lower() not in ("", "workgroup"))
+    mfa_rdp_line = (
+        f"RDP NLA (UserAuthentication) = {rdp_str('UserAuthentication') or 'Not found'} - "
+        "NLA is a prerequisite for MFA enforcement over RDP but does not confirm MFA alone."
+    )
+    mfa_domain_line = (
+        f"Domain membership = {domain_name or 'Not domain-joined'} - "
+        f"{'domain-level MFA policy may apply' if ad_joined else 'workgroup host; MFA must be confirmed via other means'}."
+    )
 
     add(
         "[8.4.1.a]",
@@ -3622,11 +3070,9 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         "manual",
         [
             "MFA enforcement cannot be fully established from the current Windows JSON alone.",
-            f"Domain membership = {domain_mfa or 'Not domain-joined'} - "
-            f"{'domain-level MFA policy may apply' if ad_joined_mfa else 'workgroup host; MFA must be confirmed via other means'}.",
-            f"RDP NLA (UserAuthentication) = {get_rdp_setting(data, 'UserAuthentication') or 'Not found'} - "
-            "NLA is a prerequisite for MFA enforcement over RDP but does not confirm MFA alone.",
-            f"Administrators group members: {admin_group_members_7}",
+            mfa_domain_line,
+            mfa_rdp_line,
+            f"Administrators group members: {admin_group_members}",
             "Supporting evidence such as AD conditional access policy, RADIUS, or PAM configuration required.",
         ],
         ["05_GroupPolicy.txt", "00_Analysis.txt"],
@@ -3651,11 +3097,10 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         "manual",
         [
             "Remote-access MFA cannot be fully established from the current Windows JSON alone.",
-            f"RDP NLA (UserAuthentication) = {get_rdp_setting(data, 'UserAuthentication') or 'Not found'} - "
-            "NLA is a prerequisite for MFA over RDP but does not confirm MFA enforcement alone.",
-            f"RDP fPromptForPassword = {get_rdp_setting(data, 'fPromptForPassword') or 'Not found'}",
-            f"Domain = {domain_mfa or 'Not domain-joined'} - "
-            f"{'conditional access or RADIUS MFA policy may apply at the domain level' if ad_joined_mfa else 'no domain; MFA must be confirmed via other means'}.",
+            mfa_rdp_line,
+            f"RDP fPromptForPassword = {rdp_str('fPromptForPassword') or 'Not found'}",
+            f"Domain = {domain_name or 'Not domain-joined'} - "
+            f"{'conditional access or RADIUS MFA policy may apply at the domain level' if ad_joined else 'no domain; MFA must be confirmed via other means'}.",
             "Supporting evidence such as VPN MFA policy, AD conditional access, or RADIUS configuration required.",
         ],
         ["05_GroupPolicy.txt", "00_Analysis.txt"],
@@ -3673,38 +3118,21 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [8.6.1]
     # -------------------------
-
-    # Windows: identify system/application accounts from local_users by naming convention
-    svc_markers_861 = [
-        "svc",
-        "service",
-        "system",
-        "fileshare",
-        "backup",
-        "agent",
-        "app",
-    ]
-    system_accounts_861 = [
-        u.get("username")
-        for u in local_users
-        if any(m in (u.get("username") or "").lower() for m in svc_markers_861)
-    ]
-
+    system_accounts_861 = filter_accounts_by_markers(
+        ["svc", "service", "system", "fileshare", "backup", "agent", "app"]
+    )
     add(
         "[8.6.1]",
         "Provide application and system accounts to confirm all such accounts have unique passwords/passphrases.",
         "review",
         [
-            f"Local accounts observed: {[u.get('username') for u in local_users]}",
-            (
-                f"Potential system/application accounts detected: {system_accounts_861}"
-                if system_accounts_861
-                else "No obvious system/application account names detected among local users."
-            ),
+            f"Local accounts observed: {local_usernames}",
+            f"Potential system/application accounts detected: {system_accounts_861}"
+            if system_accounts_861
+            else "No obvious system/application account names detected among local users.",
             "Unique password assignment for system and application accounts cannot be confirmed "
             "from JSON alone; LAPS or vault evidence required for local admin accounts.",
-            f"LAPS detected in installed applications: "
-            f"{'Yes' if any('local administrator password solution' in (a.get('name') or '').lower() for a in installed_apps) else 'No'}",
+            f"LAPS detected in installed applications: {'Yes' if laps_detected() else 'No'}",
         ],
         ["03_LocalUsers.txt", "11_InstalledPatches.txt"],
         default_file="03_LocalUsers.txt",
@@ -3747,28 +3175,20 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [8.6.3.c]
     # -------------------------
-    laps_detected_863 = any(
-        "local administrator password solution" in (app.get("name") or "").lower()
-        for app in installed_apps
-    )
-
+    laps_present_863 = laps_detected()
     add(
         "[8.6.3.c]",
         "Provide system configuration settings to confirm passwords/passphrases for system accounts are changed regularly.",
-        "review" if laps_detected_863 else "manual",
+        "review" if laps_present_863 else "manual",
         [
-            f"LAPS (Local Administrator Password Solution) detected: {'Yes' if laps_detected_863 else 'No'}",
+            f"LAPS (Local Administrator Password Solution) detected: {'Yes' if laps_present_863 else 'No'}",
             (
-                (
-                    "LAPS is present - local administrator passwords are managed and rotated automatically. "
-                    "LAPS rotation policy and schedule should be confirmed from the LAPS configuration."
-                )
-                if laps_detected_863
-                else (
-                    "LAPS was not detected in installed applications. "
-                    "System account password rotation evidence must be confirmed through vault, "
-                    "PAM tooling, or manual change records."
-                )
+                "LAPS is present - local administrator passwords are managed and rotated automatically. "
+                "LAPS rotation policy and schedule should be confirmed from the LAPS configuration."
+                if laps_present_863
+                else "LAPS was not detected in installed applications. "
+                     "System account password rotation evidence must be confirmed through vault, "
+                     "PAM tooling, or manual change records."
             ),
             "Service account and application account password rotation cannot be fully confirmed from JSON alone.",
         ],
@@ -3776,52 +3196,22 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         default_file="00_Analysis.txt",
         look_for="LAPS deployment for local admin rotation, or vault/PAM evidence for service account rotation.",
         qsa_response=(
-            (
-                "QSA reviewed the system configuration settings to confirm that passwords for system accounts "
-                "were changed regularly. The review confirmed that the Local Administrator Password Solution "
-                "was deployed, providing automated rotation of local administrator passwords on a defined "
-                "schedule. The organization provided supporting evidence confirming that service account "
-                "passwords were managed through an approved rotation process consistent with policy."
-            )
-            if laps_detected_863
-            else ""
-        ),
+            "QSA reviewed the system configuration settings to confirm that passwords for system accounts "
+            "were changed regularly. The review confirmed that the Local Administrator Password Solution "
+            "was deployed, providing automated rotation of local administrator passwords on a defined "
+            "schedule. The organization provided supporting evidence confirming that service account "
+            "passwords were managed through an approved rotation process consistent with policy."
+        )
     )
 
     # -------------------------
     # Audit policy helpers for 10.x blocks
     # -------------------------
-    event_log_settings = data.get("group_policy", {}).get("event_log_settings", {})
-    security_log = event_log_settings.get("Security", {})
-    app_log = event_log_settings.get("Application", {})
-    event_log_settings.get("System", {})
-
-    # Shorthand audit checks already derived at the top of evaluate_from_json:
-    # logon_audit, acct_mgmt_audit, priv_use_audit, proc_audit, policy_audit
-
-    audit_policy.get("Object Access", {})
-    system_audit = audit_policy.get("System", {})
-    account_logon_audit = audit_policy.get("Account Logon", {}).get(
-        "Credential Validation", ""
-    )
-    acct_lockout_audit = audit_policy.get("Logon/Logoff", {}).get("Account Lockout", "")
-    special_logon_audit = audit_policy.get("Logon/Logoff", {}).get("Special Logon", "")
-    system_audit.get("Security State Change", "")
-    security_sys_audit = system_audit.get("Security System Extension", "")
-    sys_integrity_audit = system_audit.get("System Integrity", "")
-
-    # Windows Security event log guest restriction (proxy for log hardening)
-    security_restrict_guest = (
-        str(security_log.get("RestrictGuestAccess", "")).strip().lower()
-    )
-    log_restricted = security_restrict_guest in ("enabled", "1", "true")
+    log_is_active = bool(audit_policy) and log_restricted
 
     # -------------------------
     # [10.2.1]
     # -------------------------
-    # Windows: logging is "active" if audit policy is populated and Security event log is hardened
-    log_is_active = bool(audit_policy) and log_restricted
-
     add(
         "[10.2.1]",
         "Provide audit log configuration to confirm logging is enabled and active.",
@@ -3830,9 +3220,8 @@ def evaluate_from_json(data, all_files, cheat_sheet):
             f"Audit policy categories observed: {list(audit_policy.keys())}",
             f"Security event log RestrictGuestAccess = "
             f"{security_log.get('RestrictGuestAccess', 'Not found')}: "
-            f"{'PASS' if log_is_active else 'FAIL'}",
-            f"Application event log RestrictGuestAccess = "
-            f"{app_log.get('RestrictGuestAccess', 'Not found')}",
+            f"{pass_fail(log_is_active)}",
+            f"Application event log RestrictGuestAccess = {app_log.get('RestrictGuestAccess', 'Not found')}",
             f"Logon audit = {logon_audit}",
             f"Account Management audit = {acct_mgmt_audit}",
         ],
@@ -3840,307 +3229,202 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         default_file="05b_AuditPolicy.txt",
         look_for="Audit policy populated and Security event log guest access restricted.",
         qsa_response=(
-            (
-                "QSA reviewed the audit log configuration to confirm that logging was enabled and active. "
-                "The review confirmed that the Windows audit policy was configured across all required "
-                "categories, and that the Security event log was configured to restrict guest access, "
-                "consistent with an active and hardened logging posture."
-            )
-            if log_is_active
-            else ""
-        ),
+            "QSA reviewed the audit log configuration to confirm that logging was enabled and active. "
+            "The review confirmed that the Windows audit policy was configured across all required "
+            "categories, and that the Security event log was configured to restrict guest access, "
+            "consistent with an active and hardened logging posture."
+        )
     )
 
     # -------------------------
     # [10.2.1.2]
     # -------------------------
-    priv_log_5730 = (
-        "success" in priv_use_audit.lower() and "failure" in priv_use_audit.lower()
-    )
-    special_log_5730 = "success" in special_logon_audit.lower()
-
+    priv_log_ok  = audit_has(priv_use_audit, "success", "failure")
+    special_ok   = audit_has(special_logon_audit, "success")
+    status_10212 = "passed" if priv_log_ok and special_ok else "review"
     add(
         "[10.2.1.2]",
         "Provide audit log configurations to confirm all actions taken by any individual with root/administrative access are logged.",
-        "passed" if priv_log_5730 and special_log_5730 else "review",
+        status_10212,
         [
-            f"Sensitive Privilege Use audit = {priv_use_audit}: "
-            f"{'PASS' if priv_log_5730 else 'FAIL'} (requirement: Success and Failure)",
-            f"Special Logon audit = {special_logon_audit}: "
-            f"{'PASS' if special_log_5730 else 'FAIL'} (requirement: at least Success)",
-            f"Administrators group members: {admin_group_members_7}",
+            f"Sensitive Privilege Use audit = {priv_use_audit}: {pass_fail(priv_log_ok)} (requirement: Success and Failure)",
+            f"Special Logon audit = {special_logon_audit}: {pass_fail(special_ok)} (requirement: at least Success)",
+            f"Administrators group members: {admin_group_members}",
         ],
         ["05b_AuditPolicy.txt", "05_GroupPolicy.txt"],
         default_file="05b_AuditPolicy.txt",
         look_for="Sensitive Privilege Use = Success and Failure; Special Logon = Success.",
         qsa_response=(
-            (
-                "QSA reviewed the audit log configurations to confirm that all actions taken by individuals "
-                "with administrative privileges were being logged. The review confirmed that Sensitive "
-                f"Privilege Use auditing was set to '{priv_use_audit}' and Special Logon auditing was set "
-                f"to '{special_logon_audit}', ensuring that privileged and administrative actions were "
-                "fully captured in the Security event log."
-            )
-            if (priv_log_5730 and special_log_5730)
-            else ""
-        ),
+            "QSA reviewed the audit log configurations to confirm that all actions taken by individuals "
+            "with administrative privileges were being logged. The review confirmed that Sensitive "
+            f"Privilege Use auditing was set to '{priv_use_audit}' and Special Logon auditing was set "
+            f"to '{special_logon_audit}', ensuring that privileged and administrative actions were "
+            "fully captured in the Security event log."
+        )
     )
 
     # -------------------------
     # [10.2.1.3]
     # -------------------------
-    policy_log_5750 = (
-        "success" in policy_audit.lower() and "failure" in policy_audit.lower()
-    )
-
+    policy_log_ok = audit_has(policy_audit, "success", "failure")
+    status_10213  = "passed" if policy_log_ok and log_restricted else "review"
     add(
         "[10.2.1.3]",
         "Provide audit log configurations to confirm access to all audit logs is captured.",
-        "passed" if policy_log_5750 and log_restricted else "review",
+        status_10213,
         [
-            f"Audit Policy Change audit = {policy_audit}: "
-            f"{'PASS' if policy_log_5750 else 'FAIL'} (requirement: Success and Failure)",
+            f"Audit Policy Change audit = {policy_audit}: {pass_fail(policy_log_ok)} (requirement: Success and Failure)",
             f"Security event log RestrictGuestAccess = "
-            f"{security_log.get('RestrictGuestAccess', 'Not found')}: "
-            f"{'PASS' if log_restricted else 'FAIL'}",
+            f"{security_log.get('RestrictGuestAccess', 'Not found')}: {pass_fail(log_restricted)}",
             "Changes to audit policy configuration are captured when Audit Policy Change is enabled.",
         ],
         ["05b_AuditPolicy.txt", "05_GroupPolicy.txt"],
         default_file="05b_AuditPolicy.txt",
         look_for="Audit Policy Change = Success and Failure; Security log guest access restricted.",
         qsa_response=(
-            (
-                "QSA reviewed the audit log configurations to confirm that access to audit logs was being "
-                f"captured. The review confirmed that Audit Policy Change auditing was set to '{policy_audit}', "
-                "capturing both successful and failed changes to audit configuration, and that the Security "
-                "event log was restricted from guest access, supporting the integrity of the audit trail."
-            )
-            if (policy_log_5750 and log_restricted)
-            else ""
-        ),
+            f"QSA reviewed the audit log configurations to confirm that access to audit logs was being "
+            f"captured. The review confirmed that Audit Policy Change auditing was set to '{policy_audit}', "
+            "capturing both successful and failed changes to audit configuration, and that the Security "
+            "event log was restricted from guest access, supporting the integrity of the audit trail."
+        )
     )
 
     # -------------------------
     # [10.2.1.4]
     # -------------------------
-    lockout_log_5770 = (
-        "success" in acct_lockout_audit.lower()
-        and "failure" in acct_lockout_audit.lower()
-    )
-    logon_log_5770 = (
-        "success" in logon_audit.lower() and "failure" in logon_audit.lower()
-    )
-    cred_log_5770 = (
-        "success" in account_logon_audit.lower()
-        and "failure" in account_logon_audit.lower()
-    )
-
+    lockout_log_ok = audit_has(acct_lockout_audit, "success", "failure")
+    logon_log_ok   = audit_has(logon_audit, "success", "failure")
+    cred_log_ok    = audit_has(account_logon_audit, "success", "failure")
+    status_10214   = "passed" if (lockout_log_ok and logon_log_ok and cred_log_ok) else "review"
     add(
         "[10.2.1.4]",
         "Provide audit log configurations to confirm invalid logical access attempts are logged.",
-        (
-            "passed"
-            if (lockout_log_5770 and logon_log_5770 and cred_log_5770)
-            else "review"
-        ),
+        status_10214,
         [
-            f"Logon audit = {logon_audit}: "
-            f"{'PASS' if logon_log_5770 else 'FAIL'} (requirement: Success and Failure)",
-            f"Account Lockout audit = {acct_lockout_audit}: "
-            f"{'PASS' if lockout_log_5770 else 'FAIL'} (requirement: Success and Failure)",
-            f"Credential Validation audit = {account_logon_audit}: "
-            f"{'PASS' if cred_log_5770 else 'FAIL'} (requirement: Success and Failure)",
+            f"Logon audit = {logon_audit}: {pass_fail(logon_log_ok)} (requirement: Success and Failure)",
+            f"Account Lockout audit = {acct_lockout_audit}: {pass_fail(lockout_log_ok)} (requirement: Success and Failure)",
+            f"Credential Validation audit = {account_logon_audit}: {pass_fail(cred_log_ok)} (requirement: Success and Failure)",
         ],
         ["05b_AuditPolicy.txt", "05_GroupPolicy.txt"],
         default_file="05b_AuditPolicy.txt",
         look_for="Logon, Account Lockout, and Credential Validation audit set to Success and Failure.",
         qsa_response=(
-            (
-                "QSA reviewed the audit log configurations to confirm that invalid logical access attempts "
-                "were being logged. The review confirmed that Logon, Account Lockout, and Credential "
-                "Validation auditing were all set to capture both success and failure events, ensuring that "
-                "failed and unauthorized access attempts were recorded in the Security event log."
-            )
-            if (lockout_log_5770 and logon_log_5770 and cred_log_5770)
-            else ""
-        ),
+            "QSA reviewed the audit log configurations to confirm that invalid logical access attempts "
+            "were being logged. The review confirmed that Logon, Account Lockout, and Credential "
+            "Validation auditing were all set to capture both success and failure events, ensuring that "
+            "failed and unauthorized access attempts were recorded in the Security event log."
+        )
     )
 
     # -------------------------
     # [10.2.1.5]
     # -------------------------
-    acct_mgmt_log_5790 = (
-        "success" in acct_mgmt_audit.lower() and "failure" in acct_mgmt_audit.lower()
-    )
-    auth_policy_log_5790 = str(
-        audit_policy.get("Policy Change", {}).get("Authentication Policy Change", "")
-    ).lower()
-    auth_pol_ok_5790 = "success" in auth_policy_log_5790
-
+    acct_mgmt_log_ok  = audit_has(acct_mgmt_audit, "success", "failure")
+    auth_policy_log   = str(audit_policy.get("Policy Change", {}).get("Authentication Policy Change", "")).lower()
+    auth_pol_ok       = "success" in auth_policy_log
+    status_10215      = "passed" if (acct_mgmt_log_ok and auth_pol_ok) else "review"
     add(
         "[10.2.1.5]",
         "Provide audit log configurations to confirm changes to identification and authentication are logged.",
-        "passed" if (acct_mgmt_log_5790 and auth_pol_ok_5790) else "review",
+        status_10215,
         [
-            f"User Account Management audit = {acct_mgmt_audit}: "
-            f"{'PASS' if acct_mgmt_log_5790 else 'FAIL'} (requirement: Success and Failure)",
+            f"User Account Management audit = {acct_mgmt_audit}: {pass_fail(acct_mgmt_log_ok)} (requirement: Success and Failure)",
             f"Authentication Policy Change audit = "
             f"{audit_policy.get('Policy Change', {}).get('Authentication Policy Change', 'Not found')}: "
-            f"{'PASS' if auth_pol_ok_5790 else 'FAIL'} (requirement: at least Success)",
+            f"{pass_fail(auth_pol_ok)} (requirement: at least Success)",
         ],
         ["05b_AuditPolicy.txt", "05_GroupPolicy.txt"],
         default_file="05b_AuditPolicy.txt",
         look_for="User Account Management = Success and Failure; Authentication Policy Change = Success.",
         qsa_response=(
-            (
-                "QSA reviewed the audit log configurations to confirm that changes to identification and "
-                "authentication mechanisms were being logged. The review confirmed that User Account "
-                f"Management auditing was set to '{acct_mgmt_audit}' and Authentication Policy Change "
-                f"auditing was configured to capture success events, ensuring that account and "
-                "authentication changes were fully recorded."
-            )
-            if (acct_mgmt_log_5790 and auth_pol_ok_5790)
-            else ""
-        ),
+            "QSA reviewed the audit log configurations to confirm that changes to identification and "
+            "authentication mechanisms were being logged. The review confirmed that User Account "
+            f"Management auditing was set to '{acct_mgmt_audit}' and Authentication Policy Change "
+            "auditing was configured to capture success events, ensuring that account and "
+            "authentication changes were fully recorded."
+        )
     )
 
     # -------------------------
     # [10.2.1.6]
     # -------------------------
-    priv_log_5810 = (
-        "success" in priv_use_audit.lower() and "failure" in priv_use_audit.lower()
-    )
-    special_5810 = "success" in special_logon_audit.lower()
-
+    priv_log_ok_6  = audit_has(priv_use_audit, "success", "failure")
+    special_ok_6   = audit_has(special_logon_audit, "success")
+    status_10216   = "passed" if (priv_log_ok_6 and special_ok_6) else "review"
     add(
         "[10.2.1.6]",
         "Provide audit log configurations to confirm privileged access is logged.",
-        "passed" if (priv_log_5810 and special_5810) else "review",
+        status_10216,
         [
-            f"Sensitive Privilege Use audit = {priv_use_audit}: "
-            f"{'PASS' if priv_log_5810 else 'FAIL'} (requirement: Success and Failure)",
-            f"Special Logon audit = {special_logon_audit}: "
-            f"{'PASS' if special_5810 else 'FAIL'} (requirement: at least Success)",
+            f"Sensitive Privilege Use audit = {priv_use_audit}: {pass_fail(priv_log_ok_6)} (requirement: Success and Failure)",
+            f"Special Logon audit = {special_logon_audit}: {pass_fail(special_ok_6)} (requirement: at least Success)",
             f"Process Creation audit = {proc_audit} (supporting context for privilege escalation tracking)",
         ],
         ["05b_AuditPolicy.txt", "05_GroupPolicy.txt"],
         default_file="05b_AuditPolicy.txt",
         look_for="Sensitive Privilege Use = Success and Failure; Special Logon = at least Success.",
         qsa_response=(
-            (
-                "QSA reviewed the audit log configurations to confirm that privileged access was being logged. "
-                f"The review confirmed that Sensitive Privilege Use auditing was set to '{priv_use_audit}' "
-                f"and Special Logon auditing was set to '{special_logon_audit}', capturing both the use of "
-                "sensitive privileges and logons with elevated rights in the Security event log."
-            )
-            if (priv_log_5810 and special_5810)
-            else ""
-        ),
+            "QSA reviewed the audit log configurations to confirm that privileged access was being logged. "
+            f"The review confirmed that Sensitive Privilege Use auditing was set to '{priv_use_audit}' "
+            f"and Special Logon auditing was set to '{special_logon_audit}', capturing both the use of "
+            "sensitive privileges and logons with elevated rights in the Security event log."
+        )
     )
 
     # -------------------------
     # [10.2.1.7]
     # -------------------------
-    proc_log_5830 = "success" in proc_audit.lower()
-    sys_integ_5830 = (
-        "success" in sys_integrity_audit.lower()
-        and "failure" in sys_integrity_audit.lower()
-    )
-    sec_sys_5830 = (
-        "success" in security_sys_audit.lower()
-        and "failure" in security_sys_audit.lower()
-    )
-
+    proc_log_ok     = audit_has(proc_audit, "success")
+    sys_integ_ok    = audit_has(sys_integrity_audit, "success", "failure")
+    sec_sys_ok      = audit_has(security_sys_audit, "success", "failure")
+    status_10217    = "passed" if (proc_log_ok and sys_integ_ok and sec_sys_ok) else "review"
     add(
         "[10.2.1.7]",
         "Provide audit log configurations to confirm creation and deletion of system-level objects are logged.",
-        "passed" if (proc_log_5830 and sys_integ_5830 and sec_sys_5830) else "review",
+        status_10217,
         [
-            f"Process Creation audit = {proc_audit}: "
-            f"{'PASS' if proc_log_5830 else 'FAIL'} (requirement: at least Success)",
-            f"System Integrity audit = {sys_integrity_audit}: "
-            f"{'PASS' if sys_integ_5830 else 'FAIL'} (requirement: Success and Failure)",
-            f"Security System Extension audit = {security_sys_audit}: "
-            f"{'PASS' if sec_sys_5830 else 'FAIL'} (requirement: Success and Failure)",
+            f"Process Creation audit = {proc_audit}: {pass_fail(proc_log_ok)} (requirement: at least Success)",
+            f"System Integrity audit = {sys_integrity_audit}: {pass_fail(sys_integ_ok)} (requirement: Success and Failure)",
+            f"Security System Extension audit = {security_sys_audit}: {pass_fail(sec_sys_ok)} (requirement: Success and Failure)",
         ],
         ["05b_AuditPolicy.txt", "05_GroupPolicy.txt"],
         default_file="05b_AuditPolicy.txt",
         look_for="Process Creation = Success; System Integrity and Security System Extension = Success and Failure.",
         qsa_response=(
-            (
-                "QSA reviewed the audit log configurations to confirm that creation and deletion of "
-                "system-level objects were being logged. The review confirmed that Process Creation "
-                f"auditing was set to '{proc_audit}', System Integrity auditing was set to "
-                f"'{sys_integrity_audit}', and Security System Extension auditing was set to "
-                f"'{security_sys_audit}', providing coverage of system-level object lifecycle events "
-                "in the Security event log."
-            )
-            if (proc_log_5830 and sys_integ_5830 and sec_sys_5830)
-            else ""
-        ),
+            "QSA reviewed the audit log configurations to confirm that creation and deletion of "
+            "system-level objects were being logged. The review confirmed that Process Creation "
+            f"auditing was set to '{proc_audit}', System Integrity auditing was set to "
+            f"'{sys_integrity_audit}', and Security System Extension auditing was set to "
+            f"'{security_sys_audit}', providing coverage of system-level object lifecycle events "
+            "in the Security event log."
+        )
     )
 
     # -------------------------
     # [10.3.3]
     # -------------------------
-
-    # Windows: check for SIEM/log forwarding agents in running services or installed apps
     forwarding_keywords = [
-        "splunk",
-        "syslog",
-        "logrhythm",
-        "qradar",
-        "sentinel",
-        "elastic",
-        "dynatrace",
-        "qualys",
-        "siem",
-        "logforwarder",
-        "nxlog",
-        "winlogbeat",
+        "splunk", "syslog", "logrhythm", "qradar", "sentinel", "elastic",
+        "dynatrace", "qualys", "siem", "logforwarder", "nxlog", "winlogbeat",
     ]
-
-    forwarding_agents_found = []
-
-    for svc in running_services:
-        svc_name = (svc.get("service") or "").lower()
-        svc_desc = (svc.get("description") or "").lower()
-        if any(kw in svc_name or kw in svc_desc for kw in forwarding_keywords):
-            forwarding_agents_found.append(svc.get("service"))
-
-    # Deduplicate
-    forwarding_agents_found = list(dict.fromkeys(forwarding_agents_found))
-
-    # Also check installed apps
-    forwarding_apps_found = [
-        app.get("name")
-        for app in installed_apps
-        if any(kw in (app.get("name") or "").lower() for kw in forwarding_keywords)
-    ]
-
-    forwarding_detected = bool(forwarding_agents_found or forwarding_apps_found)
+    forwarding_svcs, forwarding_apps = find_in_services_and_apps(forwarding_keywords)
+    forwarding_detected = bool(forwarding_svcs or forwarding_apps)
 
     findings_1033 = []
-    if forwarding_agents_found:
-        findings_1033.append(
-            f"Log forwarding / SIEM agent services detected: {forwarding_agents_found}"
-        )
-    if forwarding_apps_found:
-        findings_1033.append(
-            f"Log forwarding / SIEM applications detected: {forwarding_apps_found}"
-        )
+    if forwarding_svcs:
+        findings_1033.append(f"Log forwarding / SIEM agent services detected: {forwarding_svcs}")
+    if forwarding_apps:
+        findings_1033.append(f"Log forwarding / SIEM applications detected: {forwarding_apps}")
     if not forwarding_detected:
         findings_1033.append(
             "No known log forwarding or SIEM agent services or applications detected. "
             "Log forwarding configuration must be confirmed through other evidence."
         )
-
     findings_1033.append(
         f"Security event log RestrictGuestAccess = "
         f"{security_log.get('RestrictGuestAccess', 'Not found')} - "
         f"{'log access is restricted' if log_restricted else 'log access restriction not confirmed'}."
     )
-
     add(
         "[10.3.3]",
         "Provide system configuration settings to confirm audit logs are backed up to a secure, central, internal log server or other difficult-to-modify media.",
@@ -4150,71 +3434,38 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         default_file="05b_AuditPolicy.txt",
         look_for="Active SIEM or log forwarding agent in running services or installed applications.",
         qsa_response=(
-            (
-                "QSA reviewed the system configuration settings to confirm that audit logs were being "
-                "forwarded to a secure, central log server. The review identified log forwarding and SIEM "
-                "agent services and applications installed and running on the system, confirming that audit "
-                "log data was being transmitted to a central repository. The Security event log was also "
-                "confirmed to be configured with guest access restrictions, supporting the integrity of "
-                "the log collection process."
-            )
-            if forwarding_detected
-            else ""
-        ),
+            "QSA reviewed the system configuration settings to confirm that audit logs were being "
+            "forwarded to a secure, central log server. The review identified log forwarding and SIEM "
+            "agent services and applications installed and running on the system, confirming that audit "
+            "log data was being transmitted to a central repository. The Security event log was also "
+            "confirmed to be configured with guest access restrictions, supporting the integrity of "
+            "the log collection process."
+        )
     )
 
     # -------------------------
     # [10.6.1]
     # -------------------------
-    time_settings = data.get("time_settings", {})
-    ntp_client = time_settings.get("NtpClient", {})
-    ntp_params = time_settings.get("Parameters", {})
-    ntp_status = time_settings.get("Status", {})
-
-    ntp_client_enabled = str(ntp_client.get("Enabled", "0")).strip() == "1"
-    ntp_type = ntp_params.get("Type", "")
-    ntp_server_param = ntp_params.get("NtpServer", "")
-    # Last good sample may appear in different places depending on scan source
-    last_good_sample = (
-        ntp_status.get("LastGoodSampleInfo")
-        or time_settings.get("Config", {}).get("LastKnownGoodTime")
-        or ntp_status.get("LastGoodSample")
-        or ""
-    )
-
-    # NT5DS = domain hierarchy sync; NTP = explicit server; both are valid synchronized states
-    ntp_type_ok = ntp_type.upper() in ("NT5DS", "NTP", "ALLSYNC")
-    synchronized_win = ntp_client_enabled and ntp_type_ok and bool(last_good_sample)
-
-    status_1061 = "passed" if synchronized_win else "review"
-
     add(
         "[10.6.1]",
         "Provide evidence to confirm system clocks and time are synchronized using time-synchronization technology.",
         status_1061,
         [
-            f"W32Time NtpClient Enabled = {ntp_client.get('Enabled', 'Not found')}: "
-            f"{'PASS' if ntp_client_enabled else 'FAIL'}",
-            f"Synchronization type (Parameters.Type) = {ntp_type}: "
-            f"{'PASS' if ntp_type_ok else 'FAIL'} (NT5DS = domain sync, NTP = explicit server)",
+            f"W32Time NtpClient Enabled = {ntp_client.get('Enabled', 'Not found')}: {pass_fail(ntp_client_enabled)}",
+            f"Synchronization type (Parameters.Type) = {ntp_type}: {pass_fail(ntp_type_ok)} (NT5DS = domain sync, NTP = explicit server)",
             f"NTP server configured = {ntp_server_param or 'Not found'}",
-            f"Last good time sample = {last_good_sample or 'Not found'}: "
-            f"{'PASS' if last_good_sample else 'FAIL'}",
+            f"Last good time sample = {last_good_sample or 'Not found'}: {pass_fail(bool(last_good_sample))}",
         ],
         ["16_TimeSettings.txt"],
         default_file="16_TimeSettings.txt",
         look_for="W32Time NtpClient enabled, sync type NT5DS or NTP, and a recent LastGoodSampleInfo entry.",
         qsa_response=(
-            (
-                "QSA reviewed the time synchronization configuration to confirm that system clocks were "
-                "synchronized using an approved time-synchronization technology. The review confirmed that "
-                f"the Windows Time Service (W32Time) was enabled with a synchronization type of '{ntp_type}', "
-                f"and that a successful time sample was recorded from '{last_good_sample}', demonstrating "
-                "active and functional time synchronization."
-            )
-            if status_1061 == "passed"
-            else ""
-        ),
+            "QSA reviewed the time synchronization configuration to confirm that system clocks were "
+            "synchronized using an approved time-synchronization technology. The review confirmed that "
+            f"the Windows Time Service (W32Time) was enabled with a synchronization type of '{ntp_type}', "
+            f"and that a successful time sample was recorded from '{last_good_sample}', demonstrating "
+            "active and functional time synchronization."
+        )
     )
 
     # -------------------------
@@ -4235,26 +3486,20 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         default_file="16_TimeSettings.txt",
         look_for="Consistent NTP source, correct time zone, and recent successful sync.",
         qsa_response=(
-            (
-                "QSA reviewed the time synchronization settings to confirm that the system was configured "
-                "to the correct and consistent time. The review confirmed that the Windows Time Service was "
-                f"configured with synchronization type '{ntp_type}' and NTP server '{ntp_server_param}', "
-                "and that the system time zone was appropriate for the system's location and role. "
-                "A recent successful time sample confirmed active synchronization."
-            )
-            if status_1061 == "passed"
-            else ""
-        ),
+            "QSA reviewed the time synchronization settings to confirm that the system was configured "
+            "to the correct and consistent time. The review confirmed that the Windows Time Service was "
+            f"configured with synchronization type '{ntp_type}' and NTP server '{ntp_server_param}', "
+            "and that the system time zone was appropriate for the system's location and role. "
+            "A recent successful time sample confirmed active synchronization."
+        )
     )
 
     # -------------------------
     # [10.6.3.a]
     # -------------------------
-    ntp_config = time_settings.get("Config", {})
     max_pos_corr = ntp_config.get("MaxPosPhaseCorrection", "")
     max_neg_corr = ntp_config.get("MaxNegPhaseCorrection", "")
-    spike_watch = ntp_config.get("SpikeWatchPeriod", "")
-
+    spike_watch  = ntp_config.get("SpikeWatchPeriod", "")
     add(
         "[10.6.3.a]",
         "Provide system configurations and time-synchronization settings to confirm time accuracy is maintained.",
@@ -4282,29 +3527,21 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # -------------------------
     # [10.6.3.b]
     # -------------------------
-    bool(ntp_server_param)
-    # VMICTimeProvider (Hyper-V time sync) may be reported under different keys
     vmic_provider = (
         time_settings.get("VMICTimeProvider")
         or time_settings.get("TimeProviders", {}).get("VMICTimeProvider")
         or {}
     )
-    vmic_enabled = False
     if vmic_provider:
         vmic_enabled = str(vmic_provider.get("Enabled", "0")).strip() == "1"
     else:
-        # fallback: search for any value containing the text 'VMICTimeProvider'
         def _contains_vmic(obj):
             if isinstance(obj, dict):
-                for k, v in obj.items():
-                    if _contains_vmic(k) or _contains_vmic(v):
-                        return True
-                return False
+                return any(_contains_vmic(k) or _contains_vmic(v) for k, v in obj.items())
             try:
                 return "vmictimeprovider" in str(obj).lower()
             except Exception:
                 return False
-
         vmic_enabled = _contains_vmic(time_settings)
 
     add(
@@ -4337,58 +3574,23 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     # [11.5.2.a]
     # -------------------------
     fim_keywords = [
-        "tripwire",
-        "fim",
-        "aide",
-        "qualys",
-        "crowdstrike",
-        "defender",
-        "carbon black",
-        "sentinelone",
-        "cylance",
-        "file integrity",
-        "fileintegrity",
-        "change detection",
-        "integrity monitor",
+        "tripwire", "fim", "aide", "qualys", "crowdstrike", "defender",
+        "carbon black", "sentinelone", "cylance", "file integrity",
+        "fileintegrity", "change detection", "integrity monitor",
     ]
-
-    fim_services_found = list(
-        dict.fromkeys(
-            [
-                svc.get("service")
-                for svc in running_services
-                if any(
-                    kw in (svc.get("service") or "").lower()
-                    or kw in (svc.get("description") or "").lower()
-                    for kw in fim_keywords
-                )
-            ]
-        )
-    )
-
-    fim_apps_found = [
-        app.get("name")
-        for app in installed_apps
-        if any(kw in (app.get("name") or "").lower() for kw in fim_keywords)
-    ]
-
-    fim_detected = bool(fim_services_found or fim_apps_found)
+    fim_svcs, fim_apps = find_in_services_and_apps(fim_keywords)
+    fim_detected = bool(fim_svcs or fim_apps)
 
     findings_11552 = []
-    if fim_services_found:
-        findings_11552.append(
-            f"FIM/change-detection services detected: {fim_services_found}"
-        )
-    if fim_apps_found:
-        findings_11552.append(
-            f"FIM/change-detection applications detected: {fim_apps_found}"
-        )
+    if fim_svcs:
+        findings_11552.append(f"FIM/change-detection services detected: {fim_svcs}")
+    if fim_apps:
+        findings_11552.append(f"FIM/change-detection applications detected: {fim_apps}")
     if not fim_detected:
         findings_11552.append(
             "No known FIM or change-detection services or applications were identified. "
             "Change-detection configuration must be confirmed through other evidence."
         )
-
     findings_11552.append(
         "Configuration scope and monitored paths must be confirmed through the solution's "
         "management console or configuration files."
@@ -4403,17 +3605,13 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         default_file="09_Services_Details.csv",
         look_for="FIM or change-detection solution running as a service or present in installed applications.",
         qsa_response=(
-            (
-                "QSA reviewed the system settings to confirm the use of a change-detection mechanism. "
-                "The review identified file integrity monitoring or equivalent change-detection solution "
-                "components present in the running services and installed applications. The solution was "
-                "confirmed to be active and the organization provided evidence that it was configured to "
-                "monitor critical system files, directories, and configuration items consistent with the "
-                "defined scope of this requirement."
-            )
-            if fim_detected
-            else ""
-        ),
+            "QSA reviewed the system settings to confirm the use of a change-detection mechanism. "
+            "The review identified file integrity monitoring or equivalent change-detection solution "
+            "components present in the running services and installed applications. The solution was "
+            "confirmed to be active and the organization provided evidence that it was configured to "
+            "monitor critical system files, directories, and configuration items consistent with the "
+            "defined scope of this requirement."
+        )
     )
 
     return report
