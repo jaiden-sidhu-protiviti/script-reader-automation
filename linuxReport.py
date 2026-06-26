@@ -3140,6 +3140,8 @@ def evaluate_from_json(data, all_files, cheat_sheet):
         "fileintegrity",
         "change detection",
         "integrity monitor",
+        "trend mirco",
+        "ds_agent"
     ]
 
     fim_services_found = list(
@@ -3161,7 +3163,8 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     findings_11552 = []
     if fim_services_found:
         findings_11552.append(
-            f"FIM/change-detection services detected: {fim_services_found}"
+            f"Potential FIM/change-detection services detected: {fim_services_found}"
+            "Confirm that this module is configured as an FIM/change detection solution"
         )
     if not fim_detected:
         findings_11552.append(
@@ -3177,7 +3180,7 @@ def evaluate_from_json(data, all_files, cheat_sheet):
     add(
         "[11.5.2.a]",
         "Provide system settings to confirm the use of a change-detection mechanism.",
-        "passed" if fim_detected else "manual",
+        "review",
         findings_11552,
         ["09_Services_Details.csv", "11_InstalledPatches.txt"],
         default_file="09_Services_Details.csv",
